@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Agents Demo - OpenAI & Groq</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
+    <div class="container mx-auto p-6 max-w-6xl">
+        <h1 class="text-4xl font-bold mb-2 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+            🤖 AI Voice Agents Platform
+        </h1>
+        <p class="text-center text-gray-600 mb-8">Powered by OpenAI GPT-4 & Groq LLMs</p>
+        
+        <!-- Connection Status -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-semibold">Connection Status</h2>
+                <div id="status" class="flex items-center">
+                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+                    <span class="text-gray-600">Disconnected</span>
+                </div>
+            </div>
+            <button id="connectBtn" class="mt-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:opacity-90 transition">
+                Connect to Platform
+            </button>
+        </div>
+
+        <!-- AI Agent Selection -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Select AI Agent</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Customer Service - OpenAI -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 transition cursor-pointer agent-card" 
+                     data-agent="customer-openai">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">👤</span>
+                        <div>
+                            <h3 class="font-semibold">Customer Service</h3>
+                            <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">OpenAI GPT-4</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Professional support agent</p>
+                </div>
+
+                <!-- Sales - Groq Llama -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition cursor-pointer agent-card"
+                     data-agent="sales-groq">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">💼</span>
+                        <div>
+                            <h3 class="font-semibold">Sales Assistant</h3>
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Groq Llama3</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Product recommendations</p>
+                </div>
+
+                <!-- Tech Support - Groq Mixtral -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition cursor-pointer agent-card"
+                     data-agent="tech-groq">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">🔧</span>
+                        <div>
+                            <h3 class="font-semibold">Tech Support</h3>
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Groq Mixtral</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Technical troubleshooting</p>
+                </div>
+
+                <!-- Creative - OpenAI -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 transition cursor-pointer agent-card"
+                     data-agent="creative-openai">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">🎨</span>
+                        <div>
+                            <h3 class="font-semibold">Creative Assistant</h3>
+                            <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">OpenAI GPT-4</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Brainstorming & ideas</p>
+                </div>
+
+                <!-- Data Analyst - Groq -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-purple-400 transition cursor-pointer agent-card"
+                     data-agent="data-groq">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">📊</span>
+                        <div>
+                            <h3 class="font-semibold">Data Analyst</h3>
+                            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Groq Llama3-70B</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Data insights & trends</p>
+                </div>
+
+                <!-- General Assistant - Choice -->
+                <div class="border-2 border-gray-200 rounded-lg p-4 hover:border-gray-400 transition cursor-pointer agent-card"
+                     data-agent="general">
+                    <div class="flex items-center mb-2">
+                        <span class="text-2xl mr-2">🤖</span>
+                        <div>
+                            <h3 class="font-semibold">General Assistant</h3>
+                            <select id="llmChoice" class="text-xs border rounded px-2 py-1">
+                                <option value="openai">OpenAI</option>
+                                <option value="groq">Groq</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-600">Versatile AI helper</p>
+                </div>
+            </div>
+            <div id="selectedAgent" class="mt-4 p-3 bg-blue-50 rounded-lg hidden">
+                <span class="text-sm font-semibold">Selected: </span>
+                <span id="agentName" class="text-sm"></span>
+            </div>
+        </div>
+
+        <!-- Chat Interface -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Chat with AI Agent</h2>
+            
+            <!-- Messages -->
+            <div id="messages" class="h-96 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
+                <div class="text-center text-gray-500 text-sm">
+                    Select an AI agent to start chatting
+                </div>
+            </div>
+            
+            <!-- Input -->
+            <div class="flex gap-2">
+                <input id="messageInput" type="text" 
+                       placeholder="Type your message..." 
+                       class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                       disabled>
+                <button id="sendBtn" 
+                        class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-2 rounded-lg hover:opacity-90 transition disabled:opacity-50"
+                        disabled>
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Performance Metrics</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-blue-600" id="responseTime">-</div>
+                    <div class="text-sm text-gray-600">Response Time</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-purple-600" id="provider">-</div>
+                    <div class="text-sm text-gray-600">LLM Provider</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-600" id="model">-</div>
+                    <div class="text-sm text-gray-600">Model</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-orange-600" id="messageCount">0</div>
+                    <div class="text-sm text-gray-600">Messages</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let selectedAgent = null;
+        let messageCount = 0;
+        let isConnected = false;
+
+        // Connect button
+        document.getElementById('connectBtn').addEventListener('click', () => {
+            if (!isConnected) {
+                connectToServer();
+            } else {
+                disconnectFromServer();
+            }
+        });
+
+        function connectToServer() {
+            socket = io('http://localhost:8080');
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                isConnected = true;
+                updateConnectionStatus(true);
+                document.getElementById('connectBtn').textContent = 'Disconnect';
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+                updateConnectionStatus(false);
+                document.getElementById('connectBtn').textContent = 'Connect to Platform';
+            });
+
+            socket.on('agent-response', (data) => {
+                const endTime = Date.now();
+                const responseTime = endTime - window.lastMessageTime;
+                addMessage(data.text, 'agent', data.agentName);
+                updateMetrics(responseTime, data.provider, data.model);
+            });
+        }
+
+        function disconnectFromServer() {
+            if (socket) {
+                socket.disconnect();
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('status');
+            if (connected) {
+                statusEl.innerHTML = `
+                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>
+                    <span class="text-green-600">Connected</span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+                    <span class="text-gray-600">Disconnected</span>
+                `;
+            }
+        }
+
+        // Agent selection
+        document.querySelectorAll('.agent-card').forEach(card => {
+            card.addEventListener('click', () => {
+                if (!isConnected) {
+                    alert('Please connect to the platform first');
+                    return;
+                }
+                
+                // Remove previous selection
+                document.querySelectorAll('.agent-card').forEach(c => {
+                    c.classList.remove('border-blue-500', 'bg-blue-50');
+                });
+                
+                // Add selection
+                card.classList.add('border-blue-500', 'bg-blue-50');
+                
+                selectedAgent = card.dataset.agent;
+                const agentTitle = card.querySelector('h3').textContent;
+                const provider = card.querySelector('span.text-xs').textContent;
+                
+                document.getElementById('selectedAgent').classList.remove('hidden');
+                document.getElementById('agentName').textContent = `${agentTitle} (${provider})`;
+                
+                // Enable chat
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                
+                // Clear messages
+                document.getElementById('messages').innerHTML = `
+                    <div class="mb-4 p-3 bg-green-100 rounded-lg">
+                        <span class="font-semibold">${agentTitle}:</span> 
+                        Hello! I'm your ${agentTitle} powered by ${provider}. How can I help you today?
+                    </div>
+                `;
+                
+                // Update provider display
+                document.getElementById('provider').textContent = provider.includes('OpenAI') ? 'OpenAI' : 'Groq';
+                document.getElementById('model').textContent = provider.includes('GPT-4') ? 'GPT-4' : 
+                                                               provider.includes('Mixtral') ? 'Mixtral' :
+                                                               provider.includes('Llama3-70B') ? 'Llama3-70B' : 'Llama3';
+            });
+        });
+
+        // Send message
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message || !selectedAgent || !socket) return;
+            
+            // Add user message
+            addMessage(message, 'user');
+            
+            // Record time for response measurement
+            window.lastMessageTime = Date.now();
+            
+            // Send to server
+            socket.emit('agent-query', {
+                agent: selectedAgent,
+                message: message,
+                llmChoice: document.getElementById('llmChoice').value
+            });
+            
+            // Clear input
+            input.value = '';
+            
+            // Show loading
+            addMessage('Thinking...', 'loading');
+        }
+
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        function addMessage(text, type, sender = '') {
+            const messagesEl = document.getElementById('messages');
+            
+            // Remove loading message if exists
+            const loadingMsg = messagesEl.querySelector('.loading-msg');
+            if (loadingMsg) loadingMsg.remove();
+            
+            if (type === 'loading') {
+                messagesEl.innerHTML += `
+                    <div class="mb-4 p-3 bg-gray-100 rounded-lg loading-msg">
+                        <span class="italic text-gray-600">${text}</span>
+                    </div>
+                `;
+            } else if (type === 'user') {
+                messagesEl.innerHTML += `
+                    <div class="mb-4 p-3 bg-blue-100 rounded-lg ml-auto max-w-md">
+                        <span class="font-semibold">You:</span> ${text}
+                    </div>
+                `;
+                messageCount++;
+                document.getElementById('messageCount').textContent = messageCount;
+            } else if (type === 'agent') {
+                const bgColor = sender.includes('OpenAI') ? 'bg-green-100' : 'bg-purple-100';
+                messagesEl.innerHTML += `
+                    <div class="mb-4 p-3 ${bgColor} rounded-lg max-w-md">
+                        <span class="font-semibold">${sender}:</span> ${text}
+                    </div>
+                `;
+            }
+            
+            // Scroll to bottom
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function updateMetrics(responseTime, provider, model) {
+            document.getElementById('responseTime').textContent = `${responseTime}ms`;
+            if (provider) document.getElementById('provider').textContent = provider;
+            if (model) document.getElementById('model').textContent = model;
+        }
+
+        // Sample queries
+        const sampleQueries = {
+            'customer-openai': "My order hasn't arrived yet. What should I do?",
+            'sales-groq': "I need a laptop for programming. What do you recommend?",
+            'tech-groq': "My computer is running slowly. How can I fix it?",
+            'creative-openai': "Give me creative names for a voice AI platform",
+            'data-groq': "Our sales increased 40% last quarter. What insights can you provide?",
+            'general': "Explain quantum computing in simple terms"
+        };
+
+        // Add sample query button
+        document.querySelectorAll('.agent-card').forEach(card => {
+            const agent = card.dataset.agent;
+            if (sampleQueries[agent]) {
+                const btn = document.createElement('button');
+                btn.className = 'mt-2 text-xs text-blue-600 hover:underline';
+                btn.textContent = 'Try sample query';
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (selectedAgent === agent) {
+                        document.getElementById('messageInput').value = sampleQueries[agent];
+                    }
+                };
+                card.appendChild(btn);
+            }
+        });
+    </script>
+</body>
+</html>

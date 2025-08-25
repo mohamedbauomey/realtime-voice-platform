@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Platform Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold mb-6">Voice Platform Dashboard</h1>
+        
+        <!-- Connection Status -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Connection Status</h2>
+            <div id="status" class="text-gray-600">Disconnected</div>
+            <button id="connectBtn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                Connect
+            </button>
+        </div>
+
+        <!-- Room Controls -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Room Controls</h2>
+            <div class="flex gap-4 mb-4">
+                <input id="roomId" type="text" placeholder="Room ID" 
+                       class="flex-1 px-3 py-2 border rounded">
+                <input id="userName" type="text" placeholder="Your Name" 
+                       class="flex-1 px-3 py-2 border rounded">
+            </div>
+            <div class="flex gap-4">
+                <button id="joinBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Join Room
+                </button>
+                <button id="leaveBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                    Leave Room
+                </button>
+            </div>
+        </div>
+
+        <!-- Audio Controls -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Audio Controls</h2>
+            <div class="flex gap-4">
+                <button id="micBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Enable Microphone
+                </button>
+                <button id="muteBtn" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">
+                    Mute
+                </button>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium mb-2">Audio Level</label>
+                <div class="bg-gray-200 rounded-full h-4">
+                    <div id="audioLevel" class="bg-green-500 h-4 rounded-full transition-all" 
+                         style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Participants -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Participants</h2>
+            <ul id="participantsList" class="space-y-2">
+                <!-- Participants will be added here -->
+            </ul>
+        </div>
+
+        <!-- Metrics -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Quality Metrics</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium">Latency</label>
+                    <div id="latency" class="text-2xl font-bold">-ms</div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Packet Loss</label>
+                    <div id="packetLoss" class="text-2xl font-bold">-%</div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">Jitter</label>
+                    <div id="jitter" class="text-2xl font-bold">-ms</div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium">MOS Score</label>
+                    <div id="mos" class="text-2xl font-bold">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // VoiceClient implementation (simplified for browser)
+        class VoiceClient {
+            constructor(serverUrl = 'http://localhost:8080') {
+                this.serverUrl = serverUrl;
+                this.socket = null;
+                this.localStream = null;
+                this.peerConnection = null;
+                this.audioContext = new AudioContext({ sampleRate: 48000 });
+            }
+
+            async connect(token) {
+                return new Promise((resolve, reject) => {
+                    this.socket = io(this.serverUrl, {
+                        auth: { token }
+                    });
+
+                    this.socket.on('connect', () => {
+                        console.log('Connected to voice server');
+                        resolve(true);
+                    });
+
+                    this.socket.on('error', (error) => {
+                        console.error('Connection error:', error);
+                        reject(error);
+                    });
+
+                    this.setupEventHandlers();
+                });
+            }
+
+            async joinRoom(roomId, userName) {
+                return new Promise((resolve, reject) => {
+                    this.socket.emit('join-room', {
+                        roomId,
+                        name: userName
+                    });
+
+                    this.socket.once('joined-room', (data) => {
+                        console.log('Joined room:', data);
+                        resolve(data);
+                    });
+
+                    this.socket.once('error', (error) => {
+                        reject(error);
+                    });
+                });
+            }
+
+            async enableMicrophone() {
+                try {
+                    this.localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true,
+                            sampleRate: 48000
+                        }
+                    });
+
+                    // Setup WebRTC
+                    this.peerConnection = new RTCPeerConnection({
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            {
+                                urls: 'turn:localhost:3478',
+                                username: 'user',
+                                credential: 'pass'
+                            }
+                        ]
+                    });
+
+                    // Add audio track
+                    const audioTrack = this.localStream.getAudioTracks()[0];
+                    this.peerConnection.addTrack(audioTrack, this.localStream);
+
+                    // Create offer
+                    const offer = await this.peerConnection.createOffer();
+                    await this.peerConnection.setLocalDescription(offer);
+
+                    // Send offer to server
+                    this.socket.emit('publish-audio', {
+                        sdp: offer.sdp,
+                        codec: {
+                            mimeType: 'audio/opus',
+                            clockRate: 48000,
+                            channels: 2
+                        }
+                    });
+
+                    console.log('Microphone enabled');
+                } catch (error) {
+                    console.error('Failed to enable microphone:', error);
+                    throw error;
+                }
+            }
+
+            muteMicrophone() {
+                if (this.localStream) {
+                    this.localStream.getAudioTracks().forEach(track => {
+                        track.enabled = false;
+                    });
+                }
+            }
+
+            unmuteMicrophone() {
+                if (this.localStream) {
+                    this.localStream.getAudioTracks().forEach(track => {
+                        track.enabled = true;
+                    });
+                }
+            }
+
+            setupEventHandlers() {
+                this.socket.on('participant-joined', (data) => {
+                    console.log('Participant joined:', data);
+                    addParticipant(data);
+                });
+
+                this.socket.on('participant-left', (data) => {
+                    console.log('Participant left:', data);
+                    removeParticipant(data.participantId);
+                });
+            }
+
+            disconnect() {
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                }
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                }
+                if (this.socket) {
+                    this.socket.disconnect();
+                }
+            }
+
+            getAudioLevel() {
+                if (!this.localStream) return 0;
+                
+                const source = this.audioContext.createMediaStreamSource(this.localStream);
+                const analyser = this.audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+
+                const sum = dataArray.reduce((a, b) => a + b, 0);
+                const average = sum / dataArray.length;
+                
+                return (average / 255) * 100;
+            }
+
+            async getMetrics() {
+                if (!this.peerConnection) return null;
+                
+                const stats = await this.peerConnection.getStats();
+                let metrics = {
+                    latency: 0,
+                    packetLoss: 0,
+                    jitter: 0,
+                    bitrate: 0
+                };
+
+                stats.forEach(report => {
+                    if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+                        metrics.jitter = report.jitter * 1000; // Convert to ms
+                        metrics.packetLoss = report.packetsLost;
+                    }
+                });
+
+                return metrics;
+            }
+        }
+        
+        let client = null;
+        let metricsInterval = null;
+        let audioLevelInterval = null;
+        
+        // Initialize client
+        document.getElementById('connectBtn').addEventListener('click', async () => {
+            try {
+                client = new VoiceClient('http://localhost:8080');
+                await client.connect('test-token');
+                
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').className = 'text-green-600';
+                
+                startMetricsMonitoring();
+            } catch (error) {
+                alert('Failed to connect: ' + error.message);
+            }
+        });
+
+        // Join room
+        document.getElementById('joinBtn').addEventListener('click', async () => {
+            const roomId = document.getElementById('roomId').value;
+            const userName = document.getElementById('userName').value;
+            
+            if (!client || !roomId || !userName) {
+                alert('Please connect and enter room details');
+                return;
+            }
+            
+            try {
+                await client.joinRoom(roomId, userName);
+                alert('Joined room successfully');
+            } catch (error) {
+                alert('Failed to join room: ' + error.message);
+            }
+        });
+
+        // Enable microphone
+        document.getElementById('micBtn').addEventListener('click', async () => {
+            if (!client) {
+                alert('Please connect first');
+                return;
+            }
+            
+            try {
+                await client.enableMicrophone();
+                alert('Microphone enabled');
+                
+                // Start audio level monitoring
+                audioLevelInterval = setInterval(() => {
+                    const level = client.getAudioLevel();
+                    document.getElementById('audioLevel').style.width = level + '%';
+                }, 100);
+            } catch (error) {
+                alert('Failed to enable microphone: ' + error.message);
+            }
+        });
+
+        // Mute/Unmute
+        let isMuted = false;
+        document.getElementById('muteBtn').addEventListener('click', () => {
+            if (!client) return;
+            
+            if (isMuted) {
+                client.unmuteMicrophone();
+                document.getElementById('muteBtn').textContent = 'Mute';
+                isMuted = false;
+            } else {
+                client.muteMicrophone();
+                document.getElementById('muteBtn').textContent = 'Unmute';
+                isMuted = true;
+            }
+        });
+
+        // Participant management
+        function addParticipant(data) {
+            const list = document.getElementById('participantsList');
+            const item = document.createElement('li');
+            item.id = `participant-${data.participantId}`;
+            item.className = 'flex items-center justify-between p-2 bg-gray-50 rounded';
+            item.innerHTML = `
+                <span>${data.name}</span>
+                <span class="text-sm text-gray-500">Active</span>
+            `;
+            list.appendChild(item);
+        }
+
+        function removeParticipant(participantId) {
+            const item = document.getElementById(`participant-${participantId}`);
+            if (item) {
+                item.remove();
+            }
+        }
+
+        // Metrics monitoring
+        function startMetricsMonitoring() {
+            metricsInterval = setInterval(async () => {
+                if (!client) return;
+                
+                const metrics = await client.getMetrics();
+                if (metrics) {
+                    document.getElementById('latency').textContent = 
+                        Math.round(metrics.latency) + 'ms';
+                    document.getElementById('packetLoss').textContent = 
+                        metrics.packetLoss + '%';
+                    document.getElementById('jitter').textContent = 
+                        Math.round(metrics.jitter) + 'ms';
+                    
+                    // Calculate simple MOS score
+                    const mos = 4.5 - (metrics.packetLoss * 0.1) - (metrics.jitter * 0.01);
+                    document.getElementById('mos').textContent = 
+                        Math.max(1, Math.min(5, mos)).toFixed(1);
+                }
+            }, 1000);
+        }
+
+        // Leave room
+        document.getElementById('leaveBtn').addEventListener('click', () => {
+            if (client) {
+                client.disconnect();
+                client = null;
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').className = 'text-gray-600';
+                
+                if (metricsInterval) {
+                    clearInterval(metricsInterval);
+                }
+                if (audioLevelInterval) {
+                    clearInterval(audioLevelInterval);
+                }
+                
+                // Clear participants
+                document.getElementById('participantsList').innerHTML = '';
+            }
+        });
+    </script>
+</body>
+</html>

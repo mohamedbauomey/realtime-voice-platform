@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+coverage/
+.DS_Store
+*.pid
+*.seed
+*.pid.lock
+.idea/
+.vscode/
+*.swp
+*.swo

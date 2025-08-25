@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Voice Assistant - Like ChatGPT Voice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gray-900 min-h-screen text-white">
+    <div class="container mx-auto p-4 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-4xl font-bold mb-2">🎙️ Real-Time Voice Assistant</h1>
+            <p class="text-gray-400">Ultra-low latency voice chat with AI</p>
+        </div>
+
+        <!-- Model Selection -->
+        <div class="bg-gray-800 rounded-xl p-4 mb-4">
+            <h2 class="text-lg font-semibold mb-3">⚙️ Configuration</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- LLM Provider -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">LLM Provider</label>
+                    <select id="llmProvider" class="w-full bg-gray-700 rounded px-3 py-2">
+                        <option value="groq">Groq (Fast)</option>
+                        <option value="openai">OpenAI (Quality)</option>
+                    </select>
+                </div>
+
+                <!-- LLM Model -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Model</label>
+                    <select id="llmModel" class="w-full bg-gray-700 rounded px-3 py-2">
+                        <!-- Options populated dynamically -->
+                    </select>
+                </div>
+
+                <!-- TTS Voice -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Voice</label>
+                    <select id="ttsVoice" class="w-full bg-gray-700 rounded px-3 py-2">
+                        <option value="nova">Nova (Natural)</option>
+                        <option value="alloy">Alloy (Neutral)</option>
+                        <option value="echo">Echo (Warm)</option>
+                        <option value="fable">Fable (British)</option>
+                        <option value="onyx">Onyx (Deep)</option>
+                        <option value="shimmer">Shimmer (Soft)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                <!-- STT Provider -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">STT</label>
+                    <select id="sttProvider" class="w-full bg-gray-700 rounded px-2 py-1 text-sm">
+                        <option value="openai">OpenAI Whisper</option>
+                        <option value="groq" disabled>Groq (Coming)</option>
+                    </select>
+                </div>
+
+                <!-- Speed -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Speed</label>
+                    <select id="ttsSpeed" class="w-full bg-gray-700 rounded px-2 py-1 text-sm">
+                        <option value="0.75">0.75x</option>
+                        <option value="1.0" selected>1.0x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                    </select>
+                </div>
+
+                <!-- Temperature -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Temperature</label>
+                    <select id="temperature" class="w-full bg-gray-700 rounded px-2 py-1 text-sm">
+                        <option value="0.3">Precise</option>
+                        <option value="0.7" selected>Balanced</option>
+                        <option value="0.9">Creative</option>
+                    </select>
+                </div>
+
+                <!-- Streaming -->
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Mode</label>
+                    <select id="streamMode" class="w-full bg-gray-700 rounded px-2 py-1 text-sm">
+                        <option value="true">Stream</option>
+                        <option value="false">Standard</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Voice Interface -->
+        <div class="bg-gray-800 rounded-xl p-8 mb-4 text-center relative">
+            <!-- Connection Status -->
+            <div class="absolute top-4 right-4">
+                <button id="connectBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Connect
+                </button>
+            </div>
+
+            <!-- Voice Button -->
+            <div class="mb-6">
+                <button id="voiceBtn" class="w-40 h-40 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto flex items-center justify-center hover:scale-105 transition-all duration-300 shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg class="w-20 h-20" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+                
+                <!-- Status -->
+                <p id="status" class="mt-4 text-lg">Press and hold to talk</p>
+                
+                <!-- Audio Visualizer -->
+                <canvas id="visualizer" width="300" height="60" class="mx-auto mt-4"></canvas>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="flex justify-center gap-2">
+                <button id="pushToTalk" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm">
+                    Push to Talk: OFF
+                </button>
+                <button id="continuous" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm">
+                    Continuous: OFF
+                </button>
+                <button id="clearHistory" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm">
+                    Clear History
+                </button>
+            </div>
+        </div>
+
+        <!-- Conversation -->
+        <div class="bg-gray-800 rounded-xl p-4 mb-4">
+            <h3 class="font-semibold mb-3">Conversation</h3>
+            <div id="conversation" class="space-y-2 max-h-64 overflow-y-auto">
+                <p class="text-gray-500 text-center py-4">Start talking to begin...</p>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="bg-gray-800 rounded-xl p-4">
+            <h3 class="font-semibold mb-3">Performance</h3>
+            <div class="grid grid-cols-5 gap-4 text-center text-sm">
+                <div>
+                    <div class="text-xl font-bold text-blue-400" id="sttMetric">-</div>
+                    <div class="text-gray-500">STT</div>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-purple-400" id="llmMetric">-</div>
+                    <div class="text-gray-500">LLM</div>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-pink-400" id="ttsMetric">-</div>
+                    <div class="text-gray-500">TTS</div>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-green-400" id="totalMetric">-</div>
+                    <div class="text-gray-500">Total</div>
+                </div>
+                <div>
+                    <div class="text-xl font-bold text-yellow-400" id="providerInfo">-</div>
+                    <div class="text-gray-500">Provider</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Model configurations
+        const MODELS = {
+            openai: {
+                'gpt-4o': 'GPT-4o (Latest)',
+                'gpt-4-turbo': 'GPT-4 Turbo',
+                'gpt-4': 'GPT-4 (Stable)',
+                'gpt-4o-mini': 'GPT-4o Mini',
+                'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+                'gpt-3.5-turbo-16k': 'GPT-3.5 16K'
+            },
+            groq: {
+                'llama3-70b-8192': 'Llama 3 70B',
+                'llama3-8b-8192': 'Llama 3 8B',
+                'llama-3.1-8b-instant': 'Llama 3.1 Instant',
+                'gemma2-9b-it': 'Gemma 2 9B'
+            }
+        };
+
+        let socket = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let isRecording = false;
+        let isConnected = false;
+        let pushToTalkMode = false;
+        let continuousMode = false;
+        let audioChunks = [];
+        let visualizerAnimation = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            updateModelOptions();
+            initAudioContext();
+        });
+
+        function setupEventListeners() {
+            // Connection
+            document.getElementById('connectBtn').addEventListener('click', toggleConnection);
+            
+            // Voice button - support both click and hold
+            const voiceBtn = document.getElementById('voiceBtn');
+            
+            // Mouse events
+            voiceBtn.addEventListener('mousedown', startRecording);
+            voiceBtn.addEventListener('mouseup', stopRecording);
+            voiceBtn.addEventListener('mouseleave', stopRecording);
+            
+            // Touch events for mobile
+            voiceBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                startRecording();
+            });
+            voiceBtn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                stopRecording();
+            });
+            
+            // Model selection
+            document.getElementById('llmProvider').addEventListener('change', updateModelOptions);
+            
+            // Modes
+            document.getElementById('pushToTalk').addEventListener('click', togglePushToTalk);
+            document.getElementById('continuous').addEventListener('click', toggleContinuous);
+            document.getElementById('clearHistory').addEventListener('click', clearHistory);
+            
+            // Keyboard shortcut (spacebar for push-to-talk)
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' && pushToTalkMode && !isRecording) {
+                    e.preventDefault();
+                    startRecording();
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' && pushToTalkMode && isRecording) {
+                    e.preventDefault();
+                    stopRecording();
+                }
+            });
+        }
+
+        function updateModelOptions() {
+            const provider = document.getElementById('llmProvider').value;
+            const modelSelect = document.getElementById('llmModel');
+            const models = MODELS[provider];
+            
+            modelSelect.innerHTML = '';
+            for (const [value, label] of Object.entries(models)) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                if (value.includes('8b') || value.includes('3.5')) {
+                    option.selected = true;  // Default to faster models
+                }
+                modelSelect.appendChild(option);
+            }
+            
+            // Update provider info
+            document.getElementById('providerInfo').textContent = provider.toUpperCase();
+        }
+
+        function initAudioContext() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+        }
+
+        async function toggleConnection() {
+            if (!isConnected) {
+                await connect();
+            } else {
+                disconnect();
+            }
+        }
+
+        async function connect() {
+            socket = io('http://localhost:8080');
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                isConnected = true;
+                document.getElementById('connectBtn').textContent = 'Disconnect';
+                document.getElementById('connectBtn').className = 'bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg text-sm font-medium transition';
+                document.getElementById('voiceBtn').disabled = false;
+                updateStatus('Ready');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected');
+                isConnected = false;
+                document.getElementById('connectBtn').textContent = 'Connect';
+                document.getElementById('connectBtn').className = 'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-sm font-medium transition';
+                document.getElementById('voiceBtn').disabled = true;
+                updateStatus('Disconnected');
+            });
+            
+            // Handle responses
+            socket.on('voice-processing', (data) => {
+                console.log('Received event:', data.type, data);
+                
+                if (data.type === 'status') {
+                    updateStatus(data.text);
+                } else if (data.type === 'transcript') {
+                    addMessage('user', data.text);
+                    updateStatus('Generating response...');
+                    if (data.time) {
+                        document.getElementById('sttMetric').textContent = data.time + 'ms';
+                    }
+                } else if (data.type === 'partial') {
+                    // Show streaming text
+                    updateStatus('Assistant is thinking...');
+                    if (!window.partialDiv) {
+                        addMessage('assistant', '...');
+                        const msgs = document.querySelectorAll('#conversation > div');
+                        window.partialDiv = msgs[msgs.length - 1];
+                    }
+                    if (window.partialDiv) {
+                        window.partialDiv.innerHTML = `<span class="text-purple-400 text-sm">Assistant:</span> ${data.text}`;
+                    }
+                } else if (data.type === 'response') {
+                    window.partialDiv = null;
+                    addMessage('assistant', data.text);
+                    updateStatus('Generating speech...');
+                    if (data.time) {
+                        document.getElementById('llmMetric').textContent = data.time + 'ms';
+                    }
+                } else if (data.type === 'audio') {
+                    playAudio(data.audio);
+                    updateStatus('Playing response...');
+                    if (data.time) {
+                        document.getElementById('ttsMetric').textContent = data.time + 'ms';
+                    }
+                } else if (data.type === 'complete') {
+                    updateStatus('Ready');
+                    document.getElementById('totalMetric').textContent = data.totalTime + 'ms';
+                    
+                    // Auto-continue if in continuous mode
+                    if (continuousMode && !isRecording) {
+                        setTimeout(startRecording, 500);
+                    }
+                }
+            });
+            
+            socket.on('error', (error) => {
+                console.error('Socket error:', error);
+                addMessage('system', 'Error: ' + error.message);
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+            }
+            stopRecording();
+        }
+
+        async function startRecording() {
+            if (!isConnected || isRecording) return;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    }
+                });
+                
+                // Setup visualizer
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                startVisualizer();
+                
+                // Create recorder
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    console.log('Recording stopped, blob size:', audioBlob.size, 'bytes');
+                    
+                    // Only send if we have meaningful audio data
+                    if (audioBlob.size > 1000) {
+                        await sendAudio(audioBlob);
+                    } else {
+                        console.log('Audio too short, not sending');
+                        updateStatus('No audio detected');
+                    }
+                };
+                
+                // Start recording without timeslice to get all data at once
+                mediaRecorder.start(); // Collect all data until stop
+                isRecording = true;
+                
+                // Update UI
+                document.getElementById('voiceBtn').classList.add('scale-110', 'bg-red-600');
+                updateStatus('Listening...');
+                
+            } catch (error) {
+                console.error('Failed to start recording:', error);
+                updateStatus('Microphone access denied');
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder) return;
+            
+            if (mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+            
+            isRecording = false;
+            stopVisualizer();
+            
+            // Update UI
+            document.getElementById('voiceBtn').classList.remove('scale-110', 'bg-red-600');
+            updateStatus('Processing...');
+        }
+
+        async function sendAudio(audioBlob) {
+            const config = {
+                llmProvider: document.getElementById('llmProvider').value,
+                llmModel: document.getElementById('llmModel').value,
+                sttProvider: document.getElementById('sttProvider').value,
+                ttsVoice: document.getElementById('ttsVoice').value,
+                ttsSpeed: parseFloat(document.getElementById('ttsSpeed').value),
+                temperature: parseFloat(document.getElementById('temperature').value),
+                streamResponse: document.getElementById('streamMode').value === 'true'
+            };
+            
+            // Convert to base64 for transmission
+            const reader = new FileReader();
+            reader.onload = () => {
+                socket.emit('process-realtime-voice', {
+                    audio: reader.result,
+                    config,
+                    timestamp: Date.now()
+                });
+            };
+            reader.readAsDataURL(audioBlob);
+        }
+
+        function startVisualizer() {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d');
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                visualizerAnimation = requestAnimationFrame(draw);
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                ctx.fillStyle = 'rgb(31, 41, 55)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * canvas.height;
+                    
+                    const r = barHeight + 25 * (i / bufferLength);
+                    const g = 250 * (i / bufferLength);
+                    const b = 250;
+                    
+                    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    
+                    x += barWidth + 1;
+                }
+            }
+            
+            draw();
+        }
+
+        function stopVisualizer() {
+            if (visualizerAnimation) {
+                cancelAnimationFrame(visualizerAnimation);
+                visualizerAnimation = null;
+                
+                // Clear canvas
+                const canvas = document.getElementById('visualizer');
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgb(31, 41, 55)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function playAudio(base64Audio) {
+            const audio = new Audio(base64Audio);
+            audio.volume = 1.0; // Set maximum volume
+            
+            // Try to amplify using Web Audio API for better control
+            if (audioContext) {
+                fetch(base64Audio)
+                    .then(response => response.arrayBuffer())
+                    .then(buffer => audioContext.decodeAudioData(buffer))
+                    .then(audioBuffer => {
+                        const source = audioContext.createBufferSource();
+                        const gainNode = audioContext.createGain();
+                        
+                        source.buffer = audioBuffer;
+                        gainNode.gain.value = 2.0; // Amplify by 2x
+                        
+                        source.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        source.start(0);
+                    })
+                    .catch(() => {
+                        // Fallback to regular audio playback
+                        audio.volume = 1.0;
+                        audio.play().catch(e => console.error('Audio playback failed:', e));
+                    });
+            } else {
+                audio.volume = 1.0;
+                audio.play().catch(e => console.error('Audio playback failed:', e));
+            }
+        }
+
+        function addMessage(type, text) {
+            const conversation = document.getElementById('conversation');
+            const messageDiv = document.createElement('div');
+            
+            if (type === 'user') {
+                messageDiv.className = 'bg-blue-900/50 rounded-lg p-3';
+                messageDiv.innerHTML = `<span class="text-blue-400 text-sm">You:</span> ${text}`;
+            } else if (type === 'assistant') {
+                messageDiv.className = 'bg-purple-900/50 rounded-lg p-3';
+                messageDiv.innerHTML = `<span class="text-purple-400 text-sm">Assistant:</span> ${text}`;
+            } else {
+                messageDiv.className = 'text-gray-500 text-sm text-center';
+                messageDiv.textContent = text;
+            }
+            
+            conversation.appendChild(messageDiv);
+            conversation.scrollTop = conversation.scrollHeight;
+        }
+
+        let partialDiv = null;
+        function updatePartialResponse(text) {
+            if (!partialDiv) {
+                partialDiv = document.createElement('div');
+                partialDiv.className = 'bg-purple-900/50 rounded-lg p-3 opacity-70';
+                document.getElementById('conversation').appendChild(partialDiv);
+            }
+            partialDiv.innerHTML = `<span class="text-purple-400 text-sm">Assistant:</span> ${text}`;
+        }
+
+        function updateStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        function togglePushToTalk() {
+            pushToTalkMode = !pushToTalkMode;
+            const btn = document.getElementById('pushToTalk');
+            btn.textContent = `Push to Talk: ${pushToTalkMode ? 'ON' : 'OFF'}`;
+            btn.className = pushToTalkMode ? 
+                'bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm' :
+                'bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm';
+            
+            if (pushToTalkMode) {
+                updateStatus('Hold SPACE to talk');
+            } else {
+                updateStatus('Press and hold to talk');
+            }
+        }
+
+        function toggleContinuous() {
+            continuousMode = !continuousMode;
+            const btn = document.getElementById('continuous');
+            btn.textContent = `Continuous: ${continuousMode ? 'ON' : 'OFF'}`;
+            btn.className = continuousMode ? 
+                'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-sm' :
+                'bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm';
+        }
+
+        function clearHistory() {
+            document.getElementById('conversation').innerHTML = 
+                '<p class="text-gray-500 text-center py-4">Conversation cleared</p>';
+            
+            if (socket) {
+                socket.emit('clear-history');
+            }
+            
+            // Reset metrics
+            document.getElementById('sttMetric').textContent = '-';
+            document.getElementById('llmMetric').textContent = '-';
+            document.getElementById('ttsMetric').textContent = '-';
+            document.getElementById('totalMetric').textContent = '-';
+        }
+    </script>
+</body>
+</html>

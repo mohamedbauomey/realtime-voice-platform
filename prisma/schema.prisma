@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  apiKey        String    @unique @default(cuid())
+  plan          Plan      @default(FREE)
+  minutesUsed   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  rooms         Room[]
+  participants  Participant[]
+  recordings    Recording[]
+}
+
+model Room {
+  id            String    @id @default(cuid())
+  name          String
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  maxParticipants Int     @default(10)
+  isRecording   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  endedAt       DateTime?
+  
+  participants  Participant[]
+  recordings    Recording[]
+  metrics       RoomMetrics[]
+}
+
+model Participant {
+  id            String    @id @default(cuid())
+  roomId        String
+  room          Room      @relation(fields: [roomId], references: [id])
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  name          String
+  isAgent       Boolean   @default(false)
+  joinedAt      DateTime  @default(now())
+  leftAt        DateTime?
+  
+  metrics       ParticipantMetrics[]
+}
+
+model Recording {
+  id            String    @id @default(cuid())
+  roomId        String
+  room          Room      @relation(fields: [roomId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  url           String
+  duration      Int
+  size          BigInt
+  createdAt     DateTime  @default(now())
+}
+
+model RoomMetrics {
+  id            String    @id @default(cuid())
+  roomId        String
+  room          Room      @relation(fields: [roomId], references: [id])
+  timestamp     DateTime  @default(now())
+  activeSpeakers Int
+  packetLoss    Float
+  avgMos        Float
+  avgLatency    Float
+}
+
+model ParticipantMetrics {
+  id            String    @id @default(cuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id])
+  timestamp     DateTime  @default(now())
+  mos           Float
+  latency       Float
+  packetLoss    Float
+  jitter        Float
+  audioLevel    Float
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Voice Assistant - OpenAI & Groq</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 min-h-screen text-white">
+    <div class="container mx-auto p-6 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-pink-400">
+                🎙️ Real-Time Voice Assistant
+            </h1>
+            <p class="text-gray-300">Powered by OpenAI Whisper + GPT-4 & Groq Llama</p>
+        </div>
+
+        <!-- Status Card -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Connection Status</h2>
+                <div id="status" class="flex items-center">
+                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+                    <span>Disconnected</span>
+                </div>
+            </div>
+            <button id="connectBtn" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 py-3 rounded-lg font-semibold hover:opacity-90 transition">
+                Connect to Voice Platform
+            </button>
+        </div>
+
+        <!-- Voice Assistant Selection -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
+            <h2 class="text-xl font-semibold mb-4">Choose Your Assistant</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <!-- Smart Assistant (OpenAI) -->
+                <div class="assistant-card cursor-pointer border-2 border-white/20 rounded-xl p-4 hover:border-blue-400 transition" 
+                     data-assistant="smart">
+                    <div class="text-3xl mb-2">🧠</div>
+                    <h3 class="font-bold mb-1">Smart Assistant</h3>
+                    <p class="text-sm text-gray-300">OpenAI GPT-4</p>
+                    <p class="text-xs text-gray-400 mt-2">Best quality, thoughtful responses</p>
+                </div>
+
+                <!-- Fast Assistant (Groq) -->
+                <div class="assistant-card cursor-pointer border-2 border-white/20 rounded-xl p-4 hover:border-purple-400 transition"
+                     data-assistant="fast">
+                    <div class="text-3xl mb-2">⚡</div>
+                    <h3 class="font-bold mb-1">Fast Assistant</h3>
+                    <p class="text-sm text-gray-300">Groq Llama3</p>
+                    <p class="text-xs text-gray-400 mt-2">Ultra-fast responses</p>
+                </div>
+
+                <!-- Creative Assistant (OpenAI) -->
+                <div class="assistant-card cursor-pointer border-2 border-white/20 rounded-xl p-4 hover:border-pink-400 transition"
+                     data-assistant="creative">
+                    <div class="text-3xl mb-2">🎨</div>
+                    <h3 class="font-bold mb-1">Creative Assistant</h3>
+                    <p class="text-sm text-gray-300">OpenAI GPT-4</p>
+                    <p class="text-xs text-gray-400 mt-2">Imaginative & playful</p>
+                </div>
+
+                <!-- Mixed Mode -->
+                <div class="assistant-card cursor-pointer border-2 border-white/20 rounded-xl p-4 hover:border-green-400 transition"
+                     data-assistant="mixed">
+                    <div class="text-3xl mb-2">🔄</div>
+                    <h3 class="font-bold mb-1">Hybrid Mode</h3>
+                    <p class="text-sm text-gray-300">OpenAI + Groq</p>
+                    <p class="text-xs text-gray-400 mt-2">Smart routing for best performance</p>
+                </div>
+            </div>
+            <div id="selectedAssistant" class="mt-4 p-3 bg-white/10 rounded-lg hidden">
+                <span class="font-semibold">Selected:</span> <span id="assistantName"></span>
+            </div>
+        </div>
+
+        <!-- Voice Control -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-8 mb-6 border border-white/20 text-center">
+            <div class="mb-6">
+                <div id="micButton" class="w-32 h-32 mx-auto bg-gradient-to-br from-red-500 to-pink-600 rounded-full flex items-center justify-center cursor-pointer hover:scale-105 transition-transform shadow-2xl">
+                    <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <p id="micStatus" class="mt-4 text-lg">Click to Start Talking</p>
+            </div>
+
+            <!-- Audio Visualizer -->
+            <div class="flex justify-center items-end h-20 gap-1 mb-4">
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 20%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 40%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 60%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 80%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 100%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 80%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 60%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 40%"></div>
+                <div class="visualizer-bar w-2 bg-blue-400 rounded transition-all duration-150" style="height: 20%"></div>
+            </div>
+
+            <!-- Voice Settings -->
+            <div class="flex justify-center gap-4 text-sm">
+                <label class="flex items-center">
+                    <input type="checkbox" id="continuousMode" class="mr-2">
+                    Continuous Mode
+                </label>
+                <label class="flex items-center">
+                    Voice: 
+                    <select id="voiceSelect" class="ml-2 bg-white/20 rounded px-2 py-1">
+                        <option value="nova">Nova</option>
+                        <option value="alloy">Alloy</option>
+                        <option value="echo">Echo</option>
+                        <option value="fable">Fable</option>
+                        <option value="onyx">Onyx</option>
+                        <option value="shimmer">Shimmer</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <!-- Conversation History -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Conversation</h2>
+                <button id="clearBtn" class="text-sm text-gray-400 hover:text-white">Clear</button>
+            </div>
+            <div id="conversation" class="space-y-3 max-h-96 overflow-y-auto">
+                <div class="text-center text-gray-400 py-8">
+                    Select an assistant and click the microphone to start
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <h2 class="text-xl font-semibold mb-4">Performance</h2>
+            <div class="grid grid-cols-4 gap-4 text-center">
+                <div>
+                    <div class="text-2xl font-bold text-blue-400" id="sttTime">-</div>
+                    <div class="text-xs text-gray-400">STT Time</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-purple-400" id="llmTime">-</div>
+                    <div class="text-xs text-gray-400">LLM Time</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-pink-400" id="ttsTime">-</div>
+                    <div class="text-xs text-gray-400">TTS Time</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-green-400" id="totalTime">-</div>
+                    <div class="text-xs text-gray-400">Total Time</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let selectedAssistant = null;
+        let isConnected = false;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let continuousMode = false;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Connect button
+            document.getElementById('connectBtn').addEventListener('click', toggleConnection);
+            
+            // Assistant selection
+            document.querySelectorAll('.assistant-card').forEach(card => {
+                card.addEventListener('click', () => selectAssistant(card));
+            });
+            
+            // Microphone button
+            document.getElementById('micButton').addEventListener('click', toggleRecording);
+            
+            // Clear conversation
+            document.getElementById('clearBtn').addEventListener('click', clearConversation);
+            
+            // Continuous mode
+            document.getElementById('continuousMode').addEventListener('change', (e) => {
+                continuousMode = e.target.checked;
+            });
+        });
+
+        function toggleConnection() {
+            if (!isConnected) {
+                connectToServer();
+            } else {
+                disconnectFromServer();
+            }
+        }
+
+        function connectToServer() {
+            socket = io('http://localhost:8080');
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                isConnected = true;
+                updateConnectionStatus(true);
+                document.getElementById('connectBtn').textContent = 'Disconnect';
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+                updateConnectionStatus(false);
+                document.getElementById('connectBtn').textContent = 'Connect to Voice Platform';
+            });
+
+            // Voice processing events
+            socket.on('voice-transcript', (data) => {
+                addMessage('user', data.text);
+                document.getElementById('sttTime').textContent = data.sttTime + 'ms';
+            });
+
+            socket.on('voice-response', (data) => {
+                addMessage('assistant', data.text);
+                document.getElementById('llmTime').textContent = data.llmTime + 'ms';
+                
+                // Play audio if available
+                if (data.audio) {
+                    playAudio(data.audio);
+                    document.getElementById('ttsTime').textContent = data.ttsTime + 'ms';
+                }
+                
+                document.getElementById('totalTime').textContent = data.totalTime + 'ms';
+                
+                // Continue recording in continuous mode
+                if (continuousMode && !isRecording) {
+                    setTimeout(() => startRecording(), 500);
+                }
+            });
+
+            socket.on('voice-error', (error) => {
+                console.error('Voice error:', error);
+                addMessage('system', 'Error: ' + error.message);
+            });
+        }
+
+        function disconnectFromServer() {
+            if (socket) {
+                socket.disconnect();
+            }
+            stopRecording();
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('status');
+            if (connected) {
+                statusEl.innerHTML = `
+                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+                    <span>Connected</span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span class="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse"></span>
+                    <span>Disconnected</span>
+                `;
+            }
+        }
+
+        function selectAssistant(card) {
+            if (!isConnected) {
+                alert('Please connect to the platform first');
+                return;
+            }
+            
+            // Update UI
+            document.querySelectorAll('.assistant-card').forEach(c => {
+                c.classList.remove('border-blue-400', 'bg-white/20');
+            });
+            card.classList.add('border-blue-400', 'bg-white/20');
+            
+            selectedAssistant = card.dataset.assistant;
+            const name = card.querySelector('h3').textContent;
+            
+            document.getElementById('selectedAssistant').classList.remove('hidden');
+            document.getElementById('assistantName').textContent = name;
+            
+            // Notify server
+            socket.emit('select-assistant', {
+                type: selectedAssistant,
+                voice: document.getElementById('voiceSelect').value
+            });
+        }
+
+        async function toggleRecording() {
+            if (!isConnected || !selectedAssistant) {
+                alert('Please connect and select an assistant first');
+                return;
+            }
+            
+            if (isRecording) {
+                stopRecording();
+            } else {
+                await startRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 44100
+                    }
+                });
+                
+                // Setup audio visualization
+                setupAudioVisualization(stream);
+                
+                // Create MediaRecorder
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm'
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await sendAudioToServer(audioBlob);
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                
+                // Update UI
+                document.getElementById('micButton').classList.remove('from-red-500', 'to-pink-600');
+                document.getElementById('micButton').classList.add('from-green-500', 'to-green-600', 'animate-pulse');
+                document.getElementById('micStatus').textContent = 'Listening... Click to Stop';
+                
+                // Auto-stop after 10 seconds to prevent long recordings
+                setTimeout(() => {
+                    if (isRecording && !continuousMode) {
+                        stopRecording();
+                    }
+                }, 10000);
+                
+            } catch (error) {
+                console.error('Failed to start recording:', error);
+                alert('Failed to access microphone. Please check permissions.');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            }
+            
+            isRecording = false;
+            
+            // Update UI
+            document.getElementById('micButton').classList.remove('from-green-500', 'to-green-600', 'animate-pulse');
+            document.getElementById('micButton').classList.add('from-red-500', 'to-pink-600');
+            document.getElementById('micStatus').textContent = 'Processing...';
+            
+            // Reset visualizer
+            document.querySelectorAll('.visualizer-bar').forEach(bar => {
+                bar.style.height = '20%';
+            });
+        }
+
+        async function sendAudioToServer(audioBlob) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const arrayBuffer = reader.result;
+                const startTime = Date.now();
+                
+                socket.emit('process-voice', {
+                    audio: arrayBuffer,
+                    assistant: selectedAssistant,
+                    voice: document.getElementById('voiceSelect').value,
+                    timestamp: startTime
+                });
+                
+                document.getElementById('micStatus').textContent = 'Click to Start Talking';
+            };
+            reader.readAsArrayBuffer(audioBlob);
+        }
+
+        function setupAudioVisualization(stream) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            analyser = audioContext.createAnalyser();
+            microphone = audioContext.createMediaStreamSource(stream);
+            microphone.connect(analyser);
+            analyser.fftSize = 256;
+            
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function updateVisualization() {
+                if (!isRecording) return;
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                const bars = document.querySelectorAll('.visualizer-bar');
+                bars.forEach((bar, index) => {
+                    const value = dataArray[index * 16] || 0;
+                    const height = Math.max(20, (value / 255) * 100);
+                    bar.style.height = height + '%';
+                });
+                
+                requestAnimationFrame(updateVisualization);
+            }
+            
+            updateVisualization();
+        }
+
+        function playAudio(audioData) {
+            // Convert base64 to audio and play
+            const audio = new Audio('data:audio/wav;base64,' + audioData);
+            audio.play().catch(e => console.error('Failed to play audio:', e));
+        }
+
+        function addMessage(type, text) {
+            const conversation = document.getElementById('conversation');
+            const messageDiv = document.createElement('div');
+            
+            if (type === 'user') {
+                messageDiv.className = 'flex justify-end';
+                messageDiv.innerHTML = `
+                    <div class="bg-blue-500/30 backdrop-blur rounded-lg px-4 py-2 max-w-xs">
+                        <div class="text-xs text-gray-300 mb-1">You</div>
+                        <div>${text}</div>
+                    </div>
+                `;
+            } else if (type === 'assistant') {
+                messageDiv.className = 'flex justify-start';
+                messageDiv.innerHTML = `
+                    <div class="bg-purple-500/30 backdrop-blur rounded-lg px-4 py-2 max-w-xs">
+                        <div class="text-xs text-gray-300 mb-1">Assistant</div>
+                        <div>${text}</div>
+                    </div>
+                `;
+            } else {
+                messageDiv.className = 'text-center';
+                messageDiv.innerHTML = `
+                    <div class="text-sm text-gray-400">${text}</div>
+                `;
+            }
+            
+            conversation.appendChild(messageDiv);
+            conversation.scrollTop = conversation.scrollHeight;
+        }
+
+        function clearConversation() {
+            document.getElementById('conversation').innerHTML = `
+                <div class="text-center text-gray-400 py-8">
+                    Conversation cleared
+                </div>
+            `;
+            
+            if (socket) {
+                socket.emit('clear-history');
+            }
+        }
+    </script>
+</body>
+</html>
