@@ -52,6 +52,7 @@ export class RealtimeStreamingAgent extends EventEmitter {
   private isProcessing = false;
   private audioBuffer: Float32Array[] = [];
   private silenceTimer: NodeJS.Timeout | null = null;
+  private detectedLanguage: 'ar' | 'en' | 'auto' = 'auto';
 
   constructor(config: Partial<StreamingVoiceConfig> = {}) {
     super();
@@ -65,7 +66,7 @@ export class RealtimeStreamingAgent extends EventEmitter {
       ttsSpeed: 1.0,
       streamResponse: true,
       temperature: 0.7,
-      systemPrompt: 'You are a helpful multilingual voice assistant. You can speak English, Arabic, and Egyptian dialect fluently. When someone speaks to you in Arabic or asks you to speak Arabic, respond in Arabic. Keep responses concise and natural for voice conversation. إذا تحدث أحد باللغة العربية، أجب بالعربية.',
+      systemPrompt: 'أنت مساعد صوتي ذكي يتحدث العربية الفصحى واللهجة المصرية بطلاقة. عندما يتحدث إليك أحد بالعربية، أجب بالعربية الواضحة والبسيطة. استخدم جمل قصيرة ومفهومة. تحدث ببطء ووضوح. إذا طُلب منك التحدث بالإنجليزية، تحدث بالإنجليزية. You are a fluent Arabic and English speaking assistant. Respond in Arabic when spoken to in Arabic, using clear and simple sentences.',
       ...config
     };
 
@@ -247,19 +248,44 @@ export class RealtimeStreamingAgent extends EventEmitter {
   }
 
   /**
+   * Detect language from text
+   */
+  private detectLanguage(text: string): 'ar' | 'en' {
+    const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+    const arabicChars = (text.match(arabicPattern) || []).length;
+    const totalChars = text.length;
+    
+    // If more than 30% of characters are Arabic, consider it Arabic
+    if (arabicChars > 0 && (arabicChars / totalChars) > 0.3) {
+      return 'ar';
+    }
+    return 'en';
+  }
+
+  /**
    * Speech to Text with provider selection
    */
   private async speechToText(audioData: ArrayBuffer): Promise<string | null> {
     try {
       console.log(`Using ${this.config.sttProvider} STT, audio size: ${audioData.byteLength} bytes`);
       
+      let transcript: string | null;
+      
       if (this.config.sttProvider === 'groq') {
         // Groq Whisper (if available)
-        return await this.groqSTT(audioData);
+        transcript = await this.groqSTT(audioData);
       } else {
         // OpenAI Whisper
-        return await this.openaiSTT(audioData);
+        transcript = await this.openaiSTT(audioData);
       }
+      
+      // Detect language from transcript
+      if (transcript) {
+        this.detectedLanguage = this.detectLanguage(transcript);
+        console.log(`Detected language: ${this.detectedLanguage}`);
+      }
+      
+      return transcript;
     } catch (error) {
       console.error('STT Error:', error);
       this.emit('error', { message: 'Speech recognition failed. Please try again.' });
@@ -288,8 +314,9 @@ export class RealtimeStreamingAgent extends EventEmitter {
       const response = await this.openai.audio.transcriptions.create({
         file,
         model: 'whisper-1',
-        temperature: 0.2,
-        prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English.'
+        // Don't specify language to allow auto-detection
+        temperature: 0.0, // Lower temperature for more accurate transcription
+        prompt: 'محادثة بالعربية الفصحى واللهجة المصرية والإنجليزية. Mixed Arabic, Egyptian dialect, and English conversation.'
       });
       
       return response.text.trim();
@@ -302,8 +329,9 @@ export class RealtimeStreamingAgent extends EventEmitter {
     const response = await this.openai.audio.transcriptions.create({
       file,
       model: 'whisper-1',
-      temperature: 0.2,
-      prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English.'
+      // Don't specify language to allow auto-detection
+      temperature: 0.0, // Lower temperature for more accurate transcription
+      prompt: 'محادثة بالعربية الفصحى واللهجة المصرية والإنجليزية. Mixed Arabic, Egyptian dialect, and English conversation.'
     });
     
     return response.text.trim();
@@ -334,9 +362,9 @@ export class RealtimeStreamingAgent extends EventEmitter {
       const response = await this.groq.audio.transcriptions.create({
         file,
         model: 'whisper-large-v3',
-        // Don't specify language for auto-detection (Arabic + English)
-        temperature: 0.2,
-        prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English. محادثة متعددة اللغات'
+        // Don't specify language to allow auto-detection
+        temperature: 0.0, // Lower temperature for accuracy
+        prompt: 'محادثة متعددة اللغات. العربية الفصحى واللهجة المصرية والإنجليزية. Multilingual: Arabic, Egyptian, English.'
       });
       
       return response.text.trim();
@@ -511,7 +539,7 @@ export class RealtimeStreamingAgent extends EventEmitter {
       // Optimized settings for Arabic
       // Nova or Shimmer work better for Arabic than Alloy
       const voice = hasArabic ? 'nova' : this.config.ttsVoice;
-      const speed = hasArabic ? 0.75 : this.config.ttsSpeed; // Even slower for clarity
+      const speed = hasArabic ? 0.85 : this.config.ttsSpeed; // Much slower for Arabic clarity
       
       const response = await this.openai.audio.speech.create({
         model: 'tts-1-hd',  // HD model for best quality

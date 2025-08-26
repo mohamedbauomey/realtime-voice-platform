@@ -19,7 +19,7 @@ dotenv.config();
 
 // Helper function for call system prompts
 function getCallSystemPrompt(language: string = 'english'): string {
-  const prompts = {
+  const prompts: Record<string, string> = {
     english: `You are a natural conversational AI assistant in a voice call. 
               Speak naturally as if on the phone. Keep responses concise and conversational.
               Allow for interruptions and maintain context throughout the call.`,

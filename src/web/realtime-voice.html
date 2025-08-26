@@ -468,13 +468,20 @@
             let systemPrompt = '';
             
             if (languageMode === 'arabic') {
-                systemPrompt = 'أنت مساعد صوتي يتحدث العربية واللهجة المصرية. تحدث بالعربية فقط. اجعل إجاباتك قصيرة وطبيعية.';
+                systemPrompt = 'أنت مساعد صوتي ذكي يتحدث العربية الفصحى واللهجة المصرية بطلاقة. عندما يتحدث إليك أحد بالعربية، أجب بالعربية الواضحة والبسيطة. استخدم جملاً قصيرة جداً (جملة أو جملتين فقط). تحدث ببطء شديد ووضوح. تجنب الكلمات الصعبة. اجعل كل كلمة واضحة ومنفصلة.';
             } else if (languageMode === 'mixed') {
-                systemPrompt = 'You are multilingual. If user speaks Arabic: أجب بالعربية. Egyptian dialect when requested: اتكلم مصري.';
+                systemPrompt = 'أنت مساعد متعدد اللغات. عندما يتحدث أحد بالعربية: أجب بالعربية البسيطة والواضحة بجمل قصيرة جداً. When someone speaks English: respond in clear, concise English. اللهجة المصرية: لما حد يكلمك مصري، رد عليه مصري بكلام بسيط وواضح.';
             } else if (languageMode === 'english') {
-                systemPrompt = 'You are an English-speaking assistant. Respond only in English.';
+                systemPrompt = 'You are an English-speaking voice assistant. Respond only in English with clear, concise sentences. Keep responses very short for voice clarity.';
             } else {
-                systemPrompt = 'Auto-detect language. If Arabic: أجب بالعربية. If English: respond in English.';
+                systemPrompt = 'اكتشف اللغة تلقائياً. إذا تحدث أحد بالعربية: أجب بالعربية البسيطة والواضحة بجمل قصيرة. If someone speaks English: respond in clear, concise English. Keep all responses very short.';
+            }
+            
+            // Adjust TTS speed for Arabic
+            let ttsSpeed = parseFloat(document.getElementById('ttsSpeed').value);
+            if (languageMode === 'arabic' || languageMode === 'mixed') {
+                // Override speed for Arabic to be slower
+                ttsSpeed = Math.min(ttsSpeed, 0.85);
             }
             
             const config = {
@@ -482,7 +489,7 @@
                 llmModel: document.getElementById('llmModel').value,
                 sttProvider: document.getElementById('sttProvider').value,
                 ttsVoice: document.getElementById('ttsVoice').value,
-                ttsSpeed: parseFloat(document.getElementById('ttsSpeed').value),
+                ttsSpeed: ttsSpeed,
                 temperature: parseFloat(document.getElementById('temperature').value),
                 streamResponse: document.getElementById('streamMode') ? document.getElementById('streamMode').value === 'true' : true,
                 systemPrompt: systemPrompt

@@ -14,8 +14,8 @@ export const ARABIC_VOICE_CONFIG = {
   
   // Speed settings for clarity
   speed: {
-    arabic: 1.0,        // Slower for Arabic clarity
-    egyptian: 1.0,       // Slightly faster for Egyptian dialect
+    arabic: 0.85,        // Much slower for Arabic clarity
+    egyptian: 0.9,       // Slower for Egyptian dialect
     english: 1.0         // Normal speed for English
   },
   
@@ -55,16 +55,16 @@ export const ARABIC_VOICE_CONFIG = {
     
     // Use slightly different voice for Egyptian
     voice: 'nova',
-    speed: 1.0
+    speed: 1.2
   },
   
   // System prompts for better Arabic responses
   prompts: {
-    arabic: 'أنت مساعد صوتي ذكي يتحدث العربية الفصحى. تحدث بوضوح وببطء. استخدم جمل قصيرة ومفهومة. لا تستخدم كلمات إنجليزية.',
+    arabic: 'أنت مساعد صوتي ذكي يتحدث العربية الفصحى بطلاقة. تحدث بوضوح تام وببطء شديد. استخدم جملاً قصيرة جداً ومفردات بسيطة. انطق كل كلمة بوضوح منفصلة عن الأخرى. تجنب الكلمات الصعبة أو المعقدة. أجب بجملة أو جملتين فقط في كل مرة.',
     
-    egyptian: 'انت مساعد صوتي بيتكلم مصري. اتكلم بالراحة وبوضوح. استخدم كلام بسيط ومفهوم. كلام قصير علشان الصوت يبقى واضح.',
+    egyptian: 'انت مساعد صوتي بيتكلم عربي مصري. اتكلم بالراحة جداً وبوضوح. خلي الكلام بسيط وسهل. رد بجملة واحدة أو اتنين بس. انطق كل كلمة واضحة. متستخدمش كلام صعب.',
     
-    mixed: 'You are a multilingual assistant. When speaking Arabic, speak clearly and slowly. Use proper Arabic pronunciation. للعربية: تحدث ببطء ووضوح.'
+    mixed: 'أنت مساعد يتحدث العربية والإنجليزية. عند التحدث بالعربية، تكلم ببطء شديد ووضوح. استخدم جملاً بسيطة وقصيرة. When speaking English, be clear and concise. Keep responses very short for voice clarity.'
   }
 };
 
