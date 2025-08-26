@@ -28,7 +28,7 @@ export const STT_MODELS = {
     'whisper-1': 'Whisper (OpenAI)'
   },
   groq: {
-    'whisper-large-v3': 'Whisper Large v3 (Groq)'
+    'whisper-large-v3': 'Whisper Large v3 (Groq - Better Quality)'
   }
 };
 
@@ -65,7 +65,7 @@ export class RealtimeStreamingAgent extends EventEmitter {
       ttsSpeed: 1.0,
       streamResponse: true,
       temperature: 0.7,
-      systemPrompt: 'You are a helpful voice assistant. Keep responses concise and natural for voice conversation.',
+      systemPrompt: 'You are a helpful multilingual voice assistant. You can speak English, Arabic, and Egyptian dialect fluently. When someone speaks to you in Arabic or asks you to speak Arabic, respond in Arabic. Keep responses concise and natural for voice conversation. إذا تحدث أحد باللغة العربية، أجب بالعربية.',
       ...config
     };
 
@@ -198,6 +198,55 @@ export class RealtimeStreamingAgent extends EventEmitter {
   }
 
   /**
+   * Convert raw audio data to WAV format
+   */
+  private async convertToWav(audioData: ArrayBuffer): Promise<ArrayBuffer> {
+    // Create WAV header for 16kHz, 16-bit, mono audio
+    const sampleRate = 16000;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    
+    // For raw audio, assume it's PCM data
+    const dataLength = audioData.byteLength;
+    const headerLength = 44;
+    const fileLength = dataLength + headerLength - 8;
+    
+    const buffer = new ArrayBuffer(headerLength + dataLength);
+    const view = new DataView(buffer);
+    
+    // RIFF header
+    const encoder = new TextEncoder();
+    const riff = encoder.encode('RIFF');
+    riff.forEach((byte, i) => view.setUint8(i, byte));
+    view.setUint32(4, fileLength, true);
+    const wave = encoder.encode('WAVE');
+    wave.forEach((byte, i) => view.setUint8(8 + i, byte));
+    
+    // fmt chunk
+    const fmt = encoder.encode('fmt ');
+    fmt.forEach((byte, i) => view.setUint8(12 + i, byte));
+    view.setUint32(16, 16, true); // fmt chunk size
+    view.setUint16(20, 1, true); // audio format (1 = PCM)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * bitsPerSample / 8, true); // byte rate
+    view.setUint16(32, numChannels * bitsPerSample / 8, true); // block align
+    view.setUint16(34, bitsPerSample, true);
+    
+    // data chunk
+    const data = encoder.encode('data');
+    data.forEach((byte, i) => view.setUint8(36 + i, byte));
+    view.setUint32(40, dataLength, true);
+    
+    // Copy audio data
+    const audioView = new Uint8Array(audioData);
+    const outputView = new Uint8Array(buffer);
+    outputView.set(audioView, headerLength);
+    
+    return buffer;
+  }
+
+  /**
    * Speech to Text with provider selection
    */
   private async speechToText(audioData: ArrayBuffer): Promise<string | null> {
@@ -219,26 +268,84 @@ export class RealtimeStreamingAgent extends EventEmitter {
   }
 
   private async openaiSTT(audioData: ArrayBuffer): Promise<string> {
-    // OpenAI supports webm, mp3, mp4, mpeg, mpga, m4a, wav, webm
+    // Check if this is base64 WebM data from MediaRecorder
+    // The data should already be in WebM format from the browser
+    const uint8Array = new Uint8Array(audioData);
+    
+    // Check for WebM signature (0x1A 0x45 0xDF 0xA3)
+    const isWebM = uint8Array.length > 4 && 
+                   uint8Array[0] === 0x1A && 
+                   uint8Array[1] === 0x45 && 
+                   uint8Array[2] === 0xDF && 
+                   uint8Array[3] === 0xA3;
+    
+    if (!isWebM) {
+      // If not WebM, try to convert to WAV format which is more reliable
+      const wavBuffer = await this.convertToWav(audioData);
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const file = new File([blob], 'audio.wav', { type: 'audio/wav' });
+      
+      const response = await this.openai.audio.transcriptions.create({
+        file,
+        model: 'whisper-1',
+        temperature: 0.2,
+        prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English.'
+      });
+      
+      return response.text.trim();
+    }
+    
+    // It's valid WebM, use it directly
     const blob = new Blob([audioData], { type: 'audio/webm' });
     const file = new File([blob], 'audio.webm', { type: 'audio/webm' });
     
     const response = await this.openai.audio.transcriptions.create({
       file,
       model: 'whisper-1',
-      language: 'en',
       temperature: 0.2,
-      prompt: 'Voice assistant conversation.'
+      prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English.'
     });
     
     return response.text.trim();
   }
 
   private async groqSTT(audioData: ArrayBuffer): Promise<string> {
-    // Groq Whisper API (if they provide it)
-    // For now, fallback to OpenAI
-    console.log('Groq STT not yet available, using OpenAI');
-    return this.openaiSTT(audioData);
+    // Groq provides Whisper Large v3 for better quality transcription
+    try {
+      // Check if this is valid WebM data
+      const uint8Array = new Uint8Array(audioData);
+      const isWebM = uint8Array.length > 4 && 
+                     uint8Array[0] === 0x1A && 
+                     uint8Array[1] === 0x45 && 
+                     uint8Array[2] === 0xDF && 
+                     uint8Array[3] === 0xA3;
+      
+      let blob, file;
+      if (!isWebM) {
+        // Convert to WAV if not WebM
+        const wavBuffer = await this.convertToWav(audioData);
+        blob = new Blob([wavBuffer], { type: 'audio/wav' });
+        file = new File([blob], 'audio.wav', { type: 'audio/wav' });
+      } else {
+        blob = new Blob([audioData], { type: 'audio/webm' });
+        file = new File([blob], 'audio.webm', { type: 'audio/webm' });
+      }
+      
+      const response = await this.groq.audio.transcriptions.create({
+        file,
+        model: 'whisper-large-v3',
+        // Don't specify language for auto-detection (Arabic + English)
+        temperature: 0.2,
+        prompt: 'Multilingual conversation. Arabic, Egyptian dialect, English. محادثة متعددة اللغات'
+      });
+      
+      return response.text.trim();
+    } catch (error) {
+      console.error('Groq STT Error:', error);
+      // Fallback to OpenAI if Groq fails
+      console.log('Falling back to OpenAI Whisper');
+      return this.openaiSTT(audioData);
+    }
   }
 
   /**
@@ -379,11 +486,39 @@ export class RealtimeStreamingAgent extends EventEmitter {
     if (!text.trim()) return;
     
     try {
+      // Enhanced Arabic text handling
+      let processedText = text;
+      const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+      const hasArabic = arabicPattern.test(text);
+      
+      if (hasArabic) {
+        // Clean and normalize Arabic text
+        processedText = text.trim()
+          .replace(/[\u202A-\u202E]/g, '') // Remove existing directional marks
+          .replace(/\s+/g, ' '); // Normalize spaces
+        
+        // Add proper RTL formatting
+        processedText = '\u202B' + processedText + '\u202C';
+        
+        // Add punctuation for better pronunciation
+        if (!processedText.match(/[.!?،؟]$/)) {
+          processedText += '.';
+        }
+        
+        console.log('Enhanced Arabic TTS processing');
+      }
+      
+      // Optimized settings for Arabic
+      // Nova or Shimmer work better for Arabic than Alloy
+      const voice = hasArabic ? 'nova' : this.config.ttsVoice;
+      const speed = hasArabic ? 0.75 : this.config.ttsSpeed; // Even slower for clarity
+      
       const response = await this.openai.audio.speech.create({
-        model: 'tts-1',  // Use tts-1 for lower latency
-        voice: this.config.ttsVoice,
-        input: text,
-        speed: this.config.ttsSpeed
+        model: 'tts-1-hd',  // HD model for best quality
+        voice: voice as any,
+        input: processedText,
+        speed: speed,
+        response_format: 'opus'  // Opus for better quality than MP3
       });
       
       const audioData = await response.arrayBuffer();
@@ -480,6 +615,18 @@ export class RealtimeStreamingAgent extends EventEmitter {
   clearHistory() {
     this.conversationHistory = [];
     this.audioBuffer = [];
+  }
+
+  /**
+   * Interrupt current processing
+   */
+  interrupt() {
+    if (this.isProcessing) {
+      this.isProcessing = false;
+      this.audioBuffer = [];
+      this.emit('interrupted');
+      console.log('Processing interrupted by user');
+    }
   }
 }
 

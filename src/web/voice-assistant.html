@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Assistant - Like ChatGPT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        .pulse-animation {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .speaking-animation {
+            animation: speaking 0.5s ease-in-out infinite;
+        }
+        @keyframes speaking {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-2xl w-full p-8">
+        <!-- Title -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold mb-2">AI Voice Assistant</h1>
+            <p class="text-gray-400">Click to start talking • Interrupt anytime</p>
+        </div>
+
+        <!-- Main Call Button -->
+        <div class="flex justify-center mb-8">
+            <button id="voiceBtn" class="relative">
+                <div class="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full blur-xl opacity-50"></div>
+                <div id="btnCircle" class="relative w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                    <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+                    </svg>
+                </div>
+            </button>
+        </div>
+
+        <!-- Status -->
+        <div class="text-center mb-8">
+            <div id="status" class="text-xl font-semibold">Ready</div>
+            <div id="transcript" class="text-gray-400 mt-2 min-h-[24px]"></div>
+        </div>
+
+        <!-- Conversation History -->
+        <div id="conversation" class="bg-gray-800 rounded-lg p-4 h-64 overflow-y-auto space-y-2">
+            <!-- Messages will appear here -->
+        </div>
+
+        <!-- Settings -->
+        <div class="mt-4 grid grid-cols-2 gap-4">
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" id="interruption" checked class="rounded">
+                <span>Allow Interruption</span>
+            </label>
+            <label class="flex items-center space-x-2">
+                <input type="checkbox" id="noiseCancel" checked class="rounded">
+                <span>Noise Cancellation</span>
+            </label>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let stream = null;
+        let isListening = false;
+        let isProcessing = false;
+        let currentAudio = null;
+        let silenceTimer = null;
+        let audioChunks = [];
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            document.getElementById('voiceBtn').addEventListener('click', toggleVoice);
+        });
+
+        function connectWebSocket() {
+            socket = io('ws://localhost:8080', {
+                transports: ['websocket']
+            });
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                setStatus('Ready');
+            });
+
+            socket.on('voice-assistant-response', handleResponse);
+            socket.on('voice-assistant-error', handleError);
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected');
+                setStatus('Disconnected');
+                if (isListening) stopListening();
+            });
+        }
+
+        async function toggleVoice() {
+            if (isListening) {
+                stopListening();
+            } else {
+                await startListening();
+            }
+        }
+
+        async function startListening() {
+            try {
+                // Get microphone
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: document.getElementById('noiseCancel').checked,
+                        autoGainControl: true
+                    }
+                });
+
+                // Create audio context
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Start recording
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus'
+                });
+
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        resetSilenceTimer();
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (audioChunks.length > 0) {
+                        sendAudioToServer();
+                    }
+                };
+
+                // Start recording in chunks
+                mediaRecorder.start(100); // Small chunks for responsiveness
+
+                isListening = true;
+                setStatus('Listening...');
+                updateButton(true);
+                
+                // Notify server
+                socket.emit('voice-assistant-start');
+
+                // Start silence detection
+                resetSilenceTimer();
+
+            } catch (error) {
+                console.error('Failed to start:', error);
+                setStatus('Microphone access denied');
+            }
+        }
+
+        function stopListening() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+            }
+
+            isListening = false;
+            setStatus('Ready');
+            updateButton(false);
+            
+            // Notify server
+            socket.emit('voice-assistant-stop');
+        }
+
+        function resetSilenceTimer() {
+            if (silenceTimer) {
+                clearTimeout(silenceTimer);
+            }
+
+            // After 1.5 seconds of silence, process the audio
+            silenceTimer = setTimeout(() => {
+                if (isListening && audioChunks.length > 0) {
+                    console.log('Silence detected, processing...');
+                    
+                    // Stop and restart recording to process current audio
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        mediaRecorder.stop();
+                        
+                        // Restart recording after a brief delay
+                        setTimeout(() => {
+                            if (isListening) {
+                                audioChunks = [];
+                                mediaRecorder.start(100);
+                            }
+                        }, 100);
+                    }
+                }
+            }, 1500);
+        }
+
+        async function sendAudioToServer() {
+            if (audioChunks.length === 0) return;
+            
+            // Combine all chunks into one blob
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Convert to base64
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                console.log('Sending audio to server, size:', audioBlob.size);
+                
+                setStatus('Processing...');
+                isProcessing = true;
+                
+                // Send to server
+                socket.emit('voice-assistant-audio', {
+                    audio: reader.result,
+                    interruption: document.getElementById('interruption').checked
+                });
+            };
+            reader.readAsDataURL(audioBlob);
+            
+            // Clear chunks
+            audioChunks = [];
+        }
+
+        function handleResponse(data) {
+            console.log('Response:', data);
+            
+            isProcessing = false;
+            
+            if (data.type === 'transcript') {
+                // Show what user said
+                document.getElementById('transcript').textContent = data.text;
+                addMessage('You', data.text, 'user');
+                
+            } else if (data.type === 'response') {
+                // Show AI response
+                addMessage('AI', data.text, 'ai');
+                
+            } else if (data.type === 'audio') {
+                // Play AI voice
+                playAudio(data.audio);
+                
+            } else if (data.type === 'thinking') {
+                setStatus('AI is thinking...');
+                
+            } else if (data.type === 'speaking') {
+                setStatus('AI is speaking...');
+                
+            } else if (data.type === 'ready') {
+                setStatus('Listening...');
+            }
+        }
+
+        function handleError(error) {
+            console.error('Error:', error);
+            setStatus('Error: ' + error.message);
+            isProcessing = false;
+        }
+
+        function playAudio(audioData) {
+            // Stop current audio if interruption is enabled
+            if (currentAudio && document.getElementById('interruption').checked) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+
+            const audio = new Audio(audioData);
+            currentAudio = audio;
+            
+            audio.onplay = () => {
+                setStatus('AI is speaking...');
+                updateButton(false, true);
+            };
+            
+            audio.onended = () => {
+                currentAudio = null;
+                if (isListening) {
+                    setStatus('Listening...');
+                } else {
+                    setStatus('Ready');
+                }
+                updateButton(isListening, false);
+            };
+            
+            audio.play().catch(e => {
+                console.error('Failed to play audio:', e);
+                setStatus('Audio playback failed');
+            });
+        }
+
+        function setStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        function updateButton(listening, speaking = false) {
+            const btn = document.getElementById('btnCircle');
+            
+            if (speaking) {
+                btn.classList.add('speaking-animation');
+                btn.classList.remove('pulse-animation');
+            } else if (listening) {
+                btn.classList.add('pulse-animation');
+                btn.classList.remove('speaking-animation');
+            } else {
+                btn.classList.remove('pulse-animation', 'speaking-animation');
+            }
+        }
+
+        function addMessage(sender, text, type) {
+            const conversation = document.getElementById('conversation');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `p-2 rounded ${type === 'user' ? 'bg-blue-900' : 'bg-gray-700'}`;
+            messageDiv.innerHTML = `<strong>${sender}:</strong> ${text}`;
+            conversation.appendChild(messageDiv);
+            conversation.scrollTop = conversation.scrollHeight;
+        }
+    </script>
+</body>
+</html>

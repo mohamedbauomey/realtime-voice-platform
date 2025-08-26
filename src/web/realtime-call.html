@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Call - Real-Time Conversation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 min-h-screen text-white">
+    <div class="container mx-auto p-4 max-w-6xl">
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-5xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500">
+                📞 AI Voice Call
+            </h1>
+            <p class="text-gray-400">Real-time conversation with interruption support</p>
+        </div>
+
+        <!-- Call Interface -->
+        <div class="bg-gray-800/50 backdrop-blur-lg rounded-3xl p-8 mb-6 shadow-2xl">
+            <!-- Call Status -->
+            <div class="text-center mb-8">
+                <div id="callStatus" class="text-2xl font-semibold mb-2">Ready to Call</div>
+                <div id="callTimer" class="text-gray-400 text-sm">00:00</div>
+            </div>
+
+            <!-- Call Button -->
+            <div class="flex justify-center mb-8">
+                <button id="callBtn" class="relative group">
+                    <div class="absolute inset-0 bg-gradient-to-r from-green-500 to-blue-500 rounded-full blur-xl opacity-75 group-hover:opacity-100 transition"></div>
+                    <div class="relative bg-green-500 hover:bg-green-600 w-32 h-32 rounded-full flex items-center justify-center transition-all transform hover:scale-110">
+                        <svg id="phoneIcon" class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+                        </svg>
+                        <svg id="hangupIcon" class="w-16 h-16 hidden" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.68.28-.3 0-.55-.13-.74-.33l-2.31-2.31c-.2-.2-.31-.45-.31-.71s.11-.51.31-.71C4.97 8.26 8.21 6.5 12 6.5s7.03 1.76 10.55 5.29c.2.2.31.45.31.71s-.11.51-.31.71l-2.31 2.31c-.19.2-.44.33-.74.33-.25 0-.5-.1-.68-.28-.79-.73-1.68-1.36-2.66-1.85-.33-.16-.56-.51-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                        </svg>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Voice Activity Indicators -->
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="text-center">
+                    <div class="text-sm text-gray-400 mb-2">You</div>
+                    <div id="userActivity" class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div id="userLevel" class="h-full bg-green-500 rounded-full transition-all duration-75" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="text-sm text-gray-400 mb-2">AI Assistant</div>
+                    <div id="aiActivity" class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div id="aiLevel" class="h-full bg-blue-500 rounded-full transition-all duration-75" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Visualizer -->
+            <canvas id="visualizer" width="800" height="100" class="w-full h-24 rounded-lg bg-gray-900/50"></canvas>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4">Call Settings</h3>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <!-- Model Selection -->
+                <div>
+                    <label class="text-sm text-gray-400">AI Model</label>
+                    <select id="model" class="w-full bg-gray-700 rounded px-3 py-2 text-sm">
+                        <option value="gpt-4o">GPT-4o (Best)</option>
+                        <option value="gpt-4o-mini" selected>GPT-4o Mini (Fast)</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 (Fastest)</option>
+                        <option value="llama3-70b">Llama 70B (Groq)</option>
+                        <option value="llama3-8b">Llama 8B (Groq Fast)</option>
+                    </select>
+                </div>
+
+                <!-- Voice Selection -->
+                <div>
+                    <label class="text-sm text-gray-400">AI Voice</label>
+                    <select id="voice" class="w-full bg-gray-700 rounded px-3 py-2 text-sm">
+                        <option value="nova" selected>Nova (Natural)</option>
+                        <option value="alloy">Alloy (Neutral)</option>
+                        <option value="echo">Echo (Warm)</option>
+                        <option value="shimmer">Shimmer (Soft)</option>
+                        <option value="onyx">Onyx (Deep)</option>
+                    </select>
+                </div>
+
+                <!-- Language -->
+                <div>
+                    <label class="text-sm text-gray-400">Language</label>
+                    <select id="language" class="w-full bg-gray-700 rounded px-3 py-2 text-sm">
+                        <option value="auto" selected>Auto-Detect</option>
+                        <option value="en">English</option>
+                        <option value="ar">Arabic/عربي</option>
+                        <option value="multi">Multi-Lingual</option>
+                    </select>
+                </div>
+
+                <!-- Volume -->
+                <div>
+                    <label class="text-sm text-gray-400">Volume</label>
+                    <input type="range" id="volume" min="10" max="100" value="50" 
+                           class="w-full accent-blue-500">
+                    <span id="volumeValue" class="text-xs text-gray-500">50%</span>
+                </div>
+            </div>
+
+            <!-- Advanced Options -->
+            <div class="grid grid-cols-3 gap-4 mt-4">
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="noiseCancel" checked class="rounded">
+                    <span class="text-sm">Noise Cancellation</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="interruption" checked class="rounded">
+                    <span class="text-sm">Allow Interruption</span>
+                </label>
+                <label class="flex items-center space-x-2">
+                    <input type="checkbox" id="autoReconnect" checked class="rounded">
+                    <span class="text-sm">Auto-Reconnect</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Conversation Log -->
+        <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6">
+            <h3 class="text-lg font-semibold mb-4">Conversation</h3>
+            <div id="conversation" class="space-y-3 max-h-64 overflow-y-auto">
+                <p class="text-gray-500 text-center py-8">Start a call to begin conversation...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        let socket = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let sourceNode = null;
+        let processorNode = null;
+        let stream = null;
+        let isInCall = false;
+        let callStartTime = null;
+        let callTimer = null;
+        let currentAudio = null;
+        let audioQueue = [];
+        let isAISpeaking = false;
+        let vadProcessor = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            initAudioContext();
+            connectSocket();
+        });
+
+        function setupEventListeners() {
+            const callBtn = document.getElementById('callBtn');
+            if (!callBtn) {
+                console.error('❌ Call button not found!');
+                return;
+            }
+            console.log('Setting up event listeners...');
+            callBtn.addEventListener('click', toggleCall);
+            console.log('✅ Call button listener attached');
+            
+            document.getElementById('volume').addEventListener('input', updateVolume);
+            
+            // Model change handler
+            document.getElementById('model').addEventListener('change', updateSettings);
+            document.getElementById('voice').addEventListener('change', updateSettings);
+            document.getElementById('language').addEventListener('change', updateSettings);
+        }
+
+        function initAudioContext() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function connectSocket() {
+            console.log('Connecting to WebSocket server...');
+            socket = io('ws://localhost:8080', {
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('✅ Connected to server, socket ID:', socket.id);
+                updateStatus('Ready to Call');
+                // Enable call button
+                document.getElementById('callBtn').disabled = false;
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('❌ Connection error:', error.message);
+                updateStatus('Connection Failed');
+                document.getElementById('callBtn').disabled = true;
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('⚠️ Disconnected from server');
+                updateStatus('Disconnected');
+                document.getElementById('callBtn').disabled = true;
+                if (isInCall) {
+                    endCall();
+                }
+            });
+            
+            // Handle AI responses
+            socket.on('call-response', handleAIResponse);
+            socket.on('call-error', handleError);
+        }
+
+        async function toggleCall() {
+            console.log('Toggle call clicked, isInCall:', isInCall);
+            
+            // Prevent double-clicks
+            const callBtn = document.getElementById('callBtn');
+            if (callBtn.disabled) {
+                console.log('Button disabled, ignoring click');
+                return;
+            }
+            
+            callBtn.disabled = true;
+            
+            if (!isInCall) {
+                await startCall();
+            } else {
+                endCall();
+            }
+            
+            // Re-enable after operation
+            setTimeout(() => {
+                callBtn.disabled = false;
+            }, 1000);
+        }
+
+        async function startCall() {
+            console.log('Starting call...');
+            try {
+                // Get microphone access with noise cancellation
+                const constraints = {
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: document.getElementById('noiseCancel').checked,
+                        autoGainControl: true,
+                        sampleRate: 16000
+                    }
+                };
+                
+                console.log('Requesting microphone with constraints:', constraints);
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log('Microphone access granted');
+                
+                // Send call start event FIRST
+                console.log('Sending start-call event');
+                socket.emit('start-call', getSettings());
+                
+                // Update UI
+                isInCall = true;
+                document.getElementById('callBtn').classList.remove('bg-green-500');
+                document.getElementById('callBtn').classList.add('bg-red-500');
+                document.getElementById('phoneIcon').classList.add('hidden');
+                document.getElementById('hangupIcon').classList.remove('hidden');
+                
+                updateStatus('Connecting...');
+                
+                // Start continuous recording after a short delay
+                setTimeout(() => {
+                    console.log('Starting continuous recording');
+                    setupContinuousRecording(stream);
+                    updateStatus('In Call');
+                    startCallTimer();
+                    addMessage('system', 'Call connected. Start speaking...');
+                }, 500);
+                
+            } catch (error) {
+                console.error('Failed to start call:', error);
+                alert('Failed to start call: ' + error.message + '\n\nPlease check:\n1. Microphone permissions\n2. HTTPS connection (or localhost)\n3. Browser console for details');
+                updateStatus('Call Failed: ' + error.message);
+            }
+        }
+
+        function setupContinuousRecording(stream) {
+            // Create audio processing pipeline
+            const source = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            
+            // Connect for visualization
+            source.connect(analyser);
+            startVisualizer(analyser);
+            
+            // Setup continuous streaming with chunking
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm;codecs=opus'
+            });
+            
+            let audioChunks = [];
+            
+            // Send audio chunks every 250ms for real-time processing
+            mediaRecorder.ondataavailable = async (event) => {
+                if (event.data.size > 0 && isInCall) {
+                    console.log('Audio chunk received, size:', event.data.size);
+                    
+                    // If AI is speaking and interruption is allowed, stop AI
+                    if (isAISpeaking && document.getElementById('interruption').checked) {
+                        interruptAI();
+                    }
+                    
+                    // Send audio chunk immediately
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        console.log('Sending audio to server');
+                        socket.emit('call-audio', {
+                            audio: reader.result,
+                            settings: getSettings()
+                        });
+                    };
+                    reader.readAsDataURL(event.data);
+                }
+            };
+            
+            mediaRecorder.onerror = (error) => {
+                console.error('MediaRecorder error:', error);
+                updateStatus('Recording Error');
+            };
+            
+            mediaRecorder.onstart = () => {
+                console.log('MediaRecorder started');
+            };
+            
+            mediaRecorder.onstop = () => {
+                console.log('MediaRecorder stopped');
+            };
+            
+            // Start recording with time slicing for continuous stream
+            try {
+                mediaRecorder.start(250); // Send chunks every 250ms
+                console.log('Recording started with 250ms chunks');
+            } catch (error) {
+                console.error('Failed to start recording:', error);
+                updateStatus('Recording Failed');
+            }
+            
+            // Setup VAD for speech detection
+            setupVAD(analyser);
+        }
+
+        function setupVAD(analyser) {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            let silenceStart = null;
+            const silenceThreshold = 30; // Adjust based on testing
+            const silenceDuration = 1500; // 1.5 seconds of silence
+            
+            function checkAudioLevel() {
+                if (!isInCall) return;
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Calculate average volume
+                let sum = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    sum += dataArray[i];
+                }
+                const average = sum / bufferLength;
+                
+                // Update user activity indicator
+                const level = Math.min(100, (average / 128) * 100);
+                document.getElementById('userLevel').style.width = level + '%';
+                
+                // Detect silence for end of speech
+                if (average < silenceThreshold) {
+                    if (!silenceStart) {
+                        silenceStart = Date.now();
+                    } else if (Date.now() - silenceStart > silenceDuration) {
+                        // User stopped speaking
+                        socket.emit('end-of-speech');
+                        silenceStart = null;
+                    }
+                } else {
+                    silenceStart = null;
+                }
+                
+                requestAnimationFrame(checkAudioLevel);
+            }
+            
+            checkAudioLevel();
+        }
+
+        function interruptAI() {
+            // Stop current AI audio
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            
+            // Clear audio queue
+            audioQueue = [];
+            isAISpeaking = false;
+            
+            // Notify server
+            socket.emit('interrupt-ai');
+            
+            // Update UI
+            document.getElementById('aiLevel').style.width = '0%';
+        }
+
+        function handleAIResponse(data) {
+            console.log('Received AI response:', data.type, data);
+            if (data.type === 'transcript') {
+                console.log('User said:', data.text);
+                addMessage('user', data.text);
+            } else if (data.type === 'response') {
+                console.log('AI response:', data.text);
+                addMessage('ai', data.text);
+            } else if (data.type === 'audio') {
+                console.log('Playing AI audio');
+                playAIAudio(data.audio);
+            } else if (data.type === 'interrupted') {
+                console.log('AI was interrupted');
+            } else if (data.type === 'ended') {
+                console.log('Call ended by server');
+            }
+        }
+
+        function playAIAudio(audioData) {
+            const audio = new Audio(audioData);
+            const volume = document.getElementById('volume').value / 100;
+            audio.volume = volume;
+            
+            // Add to queue
+            audioQueue.push(audio);
+            
+            // Play if not already playing
+            if (!isAISpeaking) {
+                playNextAudio();
+            }
+        }
+
+        function playNextAudio() {
+            if (audioQueue.length === 0) {
+                isAISpeaking = false;
+                document.getElementById('aiLevel').style.width = '0%';
+                return;
+            }
+            
+            isAISpeaking = true;
+            currentAudio = audioQueue.shift();
+            
+            // Update AI activity indicator
+            document.getElementById('aiLevel').style.width = '80%';
+            
+            currentAudio.onended = () => {
+                playNextAudio();
+            };
+            
+            currentAudio.play().catch(e => {
+                console.error('Audio playback failed:', e);
+                playNextAudio();
+            });
+        }
+
+        function endCall() {
+            // Stop recording
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            // Stop stream
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Stop any playing audio
+            interruptAI();
+            
+            // Update UI
+            isInCall = false;
+            document.getElementById('callBtn').classList.remove('bg-red-500');
+            document.getElementById('callBtn').classList.add('bg-green-500');
+            document.getElementById('phoneIcon').classList.remove('hidden');
+            document.getElementById('hangupIcon').classList.add('hidden');
+            
+            updateStatus('Call Ended');
+            stopCallTimer();
+            
+            // Notify server
+            socket.emit('end-call');
+            
+            addMessage('system', 'Call ended.');
+        }
+
+        function startCallTimer() {
+            callStartTime = Date.now();
+            callTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const seconds = (elapsed % 60).toString().padStart(2, '0');
+                document.getElementById('callTimer').textContent = `${minutes}:${seconds}`;
+            }, 1000);
+        }
+
+        function stopCallTimer() {
+            if (callTimer) {
+                clearInterval(callTimer);
+                callTimer = null;
+            }
+            document.getElementById('callTimer').textContent = '00:00';
+        }
+
+        function startVisualizer(analyser) {
+            const canvas = document.getElementById('visualizer');
+            const ctx = canvas.getContext('2d');
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function draw() {
+                if (!isInCall) return;
+                
+                requestAnimationFrame(draw);
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                ctx.fillStyle = 'rgba(17, 24, 39, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
+                    
+                    const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
+                    gradient.addColorStop(0, 'rgba(34, 197, 94, 0.8)');
+                    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.8)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                    
+                    x += barWidth + 1;
+                }
+            }
+            
+            draw();
+        }
+
+        function getSettings() {
+            const model = document.getElementById('model').value;
+            const isGroq = model.includes('llama');
+            
+            return {
+                llmProvider: isGroq ? 'groq' : 'openai',
+                llmModel: isGroq ? model.replace('llama3-', 'llama3-').replace('70b', '70b-8192').replace('8b', '8b-8192') : model,
+                voice: document.getElementById('voice').value,
+                language: document.getElementById('language').value,
+                volume: document.getElementById('volume').value / 100,
+                noiseCancel: document.getElementById('noiseCancel').checked,
+                allowInterruption: document.getElementById('interruption').checked
+            };
+        }
+
+        function updateSettings() {
+            if (isInCall) {
+                socket.emit('update-settings', getSettings());
+            }
+        }
+
+        function updateVolume() {
+            const value = document.getElementById('volume').value;
+            document.getElementById('volumeValue').textContent = value + '%';
+            
+            // Update current audio volume if playing
+            if (currentAudio) {
+                currentAudio.volume = value / 100;
+            }
+        }
+
+        function updateStatus(status) {
+            document.getElementById('callStatus').textContent = status;
+        }
+
+        function addMessage(type, text) {
+            const conversation = document.getElementById('conversation');
+            const messageDiv = document.createElement('div');
+            
+            if (type === 'user') {
+                messageDiv.className = 'bg-blue-900/30 rounded-lg p-3 ml-8';
+                messageDiv.innerHTML = `<span class="text-blue-400 text-sm">You:</span> ${text}`;
+            } else if (type === 'ai') {
+                messageDiv.className = 'bg-purple-900/30 rounded-lg p-3 mr-8';
+                messageDiv.innerHTML = `<span class="text-purple-400 text-sm">AI:</span> ${text}`;
+            } else {
+                messageDiv.className = 'text-gray-500 text-sm text-center italic';
+                messageDiv.textContent = text;
+            }
+            
+            conversation.appendChild(messageDiv);
+            conversation.scrollTop = conversation.scrollHeight;
+        }
+
+        function handleError(error) {
+            console.error('Call error:', error);
+            addMessage('system', 'Error: ' + error.message);
+            updateStatus('Error: ' + (error.message || 'Unknown error'));
+        }
+    </script>
+</body>
+</html>

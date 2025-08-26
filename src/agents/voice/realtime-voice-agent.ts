@@ -201,11 +201,37 @@ export class RealtimeVoiceAgent extends EventEmitter {
    * Text to Speech using OpenAI
    */
   private async textToSpeech(text: string): Promise<ArrayBuffer> {
+    // Enhanced Arabic text handling
+    let processedText = text;
+    const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+    const hasArabic = arabicPattern.test(text);
+    
+    if (hasArabic) {
+      // Clean and format Arabic text
+      processedText = text.trim()
+        .replace(/[\u202A-\u202E]/g, '') // Remove existing marks
+        .replace(/\s+/g, ' '); // Normalize spaces
+      
+      // Add RTL marks
+      processedText = '\u202B' + processedText + '\u202C';
+      
+      // Add period for better sentence ending
+      if (!processedText.match(/[.!?،؟]$/)) {
+        processedText += '.';
+      }
+      
+      console.log('Enhanced Arabic TTS processing');
+    }
+    
+    // Use nova voice for Arabic (better quality)
+    const voice = hasArabic ? 'nova' : this.config.voice;
+    const speed = hasArabic ? 0.75 : 1.0; // Slower for Arabic clarity
+    
     const response = await this.openai.audio.speech.create({
-      model: 'tts-1',  // or 'tts-1-hd' for higher quality
-      voice: this.config.voice,
-      input: text,
-      speed: 1.0
+      model: 'tts-1-hd',  // HD quality
+      voice: voice as any,
+      input: processedText,
+      speed: speed
     });
 
     return response.arrayBuffer();

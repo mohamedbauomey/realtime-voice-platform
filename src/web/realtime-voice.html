@@ -55,8 +55,8 @@
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">STT</label>
                     <select id="sttProvider" class="w-full bg-gray-700 rounded px-2 py-1 text-sm">
-                        <option value="openai">OpenAI Whisper</option>
-                        <option value="groq" disabled>Groq (Coming)</option>
+                        <option value="openai">OpenAI Whisper-1</option>
+                        <option value="groq" selected>Groq Whisper Large v3 (Better)</option>
                     </select>
                 </div>
 
@@ -89,6 +89,18 @@
                         <option value="false">Standard</option>
                     </select>
                 </div>
+            </div>
+            
+            <!-- Language Mode -->
+            <div class="mt-4 p-3 bg-gray-900 rounded-lg">
+                <label class="block text-sm text-gray-400 mb-2">🌐 Language Mode</label>
+                <select id="languageMode" class="w-full bg-gray-700 rounded px-3 py-2 text-sm">
+                    <option value="auto" selected>🌐 Auto-Detect (English/Arabic)</option>
+                    <option value="english">🇬🇧 English Only</option>
+                    <option value="arabic">🇪🇬 Arabic/عربي مصري</option>
+                    <option value="mixed">🌍 Multi-Lingual Mode</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-2">Tip: Select Arabic for اللهجة المصرية</p>
             </div>
         </div>
 
@@ -159,14 +171,20 @@
                     <div class="text-gray-500">Total</div>
                 </div>
                 <div>
-                    <div class="text-xl font-bold text-yellow-400" id="providerInfo">-</div>
-                    <div class="text-gray-500">Provider</div>
+                    <div class="text-lg font-bold text-yellow-400" id="providerInfo">-</div>
+                    <div class="text-gray-500">LLM+STT</div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        // STT Model configurations
+        const STT_MODELS = {
+            openai: 'Whisper-1 (Standard)',
+            groq: 'Whisper Large v3 (Higher Quality)'
+        };
+        
         // Model configurations
         const MODELS = {
             openai: {
@@ -227,6 +245,7 @@
             
             // Model selection
             document.getElementById('llmProvider').addEventListener('change', updateModelOptions);
+            document.getElementById('sttProvider').addEventListener('change', updateProviderDisplay);
             
             // Modes
             document.getElementById('pushToTalk').addEventListener('click', togglePushToTalk);
@@ -265,8 +284,14 @@
                 modelSelect.appendChild(option);
             }
             
-            // Update provider info
-            document.getElementById('providerInfo').textContent = provider.toUpperCase();
+            updateProviderDisplay();
+        }
+        
+        function updateProviderDisplay() {
+            const llmProvider = document.getElementById('llmProvider').value;
+            const sttProvider = document.getElementById('sttProvider').value;
+            const sttName = sttProvider === 'groq' ? 'Groq v3' : 'OpenAI';
+            document.getElementById('providerInfo').textContent = `${llmProvider.toUpperCase()} + ${sttName}`;
         }
 
         function initAudioContext() {
@@ -439,6 +464,19 @@
         }
 
         async function sendAudio(audioBlob) {
+            const languageMode = document.getElementById('languageMode') ? document.getElementById('languageMode').value : 'auto';
+            let systemPrompt = '';
+            
+            if (languageMode === 'arabic') {
+                systemPrompt = 'أنت مساعد صوتي يتحدث العربية واللهجة المصرية. تحدث بالعربية فقط. اجعل إجاباتك قصيرة وطبيعية.';
+            } else if (languageMode === 'mixed') {
+                systemPrompt = 'You are multilingual. If user speaks Arabic: أجب بالعربية. Egyptian dialect when requested: اتكلم مصري.';
+            } else if (languageMode === 'english') {
+                systemPrompt = 'You are an English-speaking assistant. Respond only in English.';
+            } else {
+                systemPrompt = 'Auto-detect language. If Arabic: أجب بالعربية. If English: respond in English.';
+            }
+            
             const config = {
                 llmProvider: document.getElementById('llmProvider').value,
                 llmModel: document.getElementById('llmModel').value,
@@ -446,7 +484,8 @@
                 ttsVoice: document.getElementById('ttsVoice').value,
                 ttsSpeed: parseFloat(document.getElementById('ttsSpeed').value),
                 temperature: parseFloat(document.getElementById('temperature').value),
-                streamResponse: document.getElementById('streamMode').value === 'true'
+                streamResponse: document.getElementById('streamMode') ? document.getElementById('streamMode').value === 'true' : true,
+                systemPrompt: systemPrompt
             };
             
             // Convert to base64 for transmission
@@ -522,7 +561,7 @@
                         const gainNode = audioContext.createGain();
                         
                         source.buffer = audioBuffer;
-                        gainNode.gain.value = 2.0; // Amplify by 2x
+                        gainNode.gain.value = 8.0; // Amplify by 8x for much louder audio
                         
                         source.connect(gainNode);
                         gainNode.connect(audioContext.destination);

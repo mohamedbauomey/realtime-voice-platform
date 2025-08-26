@@ -17,6 +17,22 @@ import {
 
 dotenv.config();
 
+// Helper function for call system prompts
+function getCallSystemPrompt(language: string = 'english'): string {
+  const prompts = {
+    english: `You are a natural conversational AI assistant in a voice call. 
+              Speak naturally as if on the phone. Keep responses concise and conversational.
+              Allow for interruptions and maintain context throughout the call.`,
+    arabic: `أنت مساعد صوتي ذكي في مكالمة هاتفية. 
+             تحدث بشكل طبيعي كما لو كنت في مكالمة حقيقية. 
+             اجعل ردودك قصيرة ومحادثة طبيعية.`,
+    mixed: `You are a multilingual voice assistant in a call. 
+            Detect the language and respond naturally in the same language.
+            Keep responses conversational and allow for interruptions.`
+  };
+  return prompts[language] || prompts.english;
+}
+
 export async function startVoiceServer() {
   const app = Fastify();
   
@@ -48,6 +64,22 @@ export async function startVoiceServer() {
     const html = await fs.readFile('src/web/realtime-voice.html', 'utf-8');
     return html;
   });
+  
+  // Serve AI Voice Call interface
+  app.get('/call', async (request, reply) => {
+    reply.type('text/html');
+    const fs = await import('fs/promises');
+    const html = await fs.readFile('src/web/realtime-call.html', 'utf-8');
+    return html;
+  });
+
+  // Serve NEW Voice Assistant interface
+  app.get('/assistant', async (request, reply) => {
+    reply.type('text/html');
+    const fs = await import('fs/promises');
+    const html = await fs.readFile('src/web/voice-assistant.html', 'utf-8');
+    return html;
+  });
 
   // Home page with links
   app.get('/', async (request, reply) => {
@@ -68,13 +100,25 @@ export async function startVoiceServer() {
         </h1>
         
         <div class="grid gap-6 md:grid-cols-2">
-            <!-- Real-Time Voice (New) -->
-            <a href="/realtime" class="block bg-white/10 backdrop-blur-lg rounded-xl p-6 hover:bg-white/20 transition border border-white/20 ring-2 ring-green-500">
+            <!-- AI Voice Call (NEW) -->
+            <a href="/call" class="block bg-white/10 backdrop-blur-lg rounded-xl p-6 hover:bg-white/20 transition border border-white/20 ring-2 ring-yellow-500">
+                <div class="text-3xl mb-3">📞</div>
+                <h2 class="text-2xl font-bold mb-2">AI Voice Call (NEWEST)</h2>
+                <p class="text-gray-300">Real phone call experience</p>
+                <div class="mt-4 text-sm text-gray-400">
+                    • Continuous conversation<br>
+                    • Voice interruption<br>
+                    • Noise cancellation
+                </div>
+            </a>
+            
+            <!-- Real-Time Voice -->
+            <a href="/realtime" class="block bg-white/10 backdrop-blur-lg rounded-xl p-6 hover:bg-white/20 transition border border-white/20">
                 <div class="text-3xl mb-3">🚀</div>
-                <h2 class="text-2xl font-bold mb-2">Real-Time Voice (NEW)</h2>
+                <h2 class="text-2xl font-bold mb-2">Real-Time Voice</h2>
                 <p class="text-gray-300">ChatGPT-like voice experience</p>
                 <div class="mt-4 text-sm text-gray-400">
-                    • Ultra-low latency<br>
+                    • Push-to-talk<br>
                     • Model selection<br>
                     • Streaming responses
                 </div>
@@ -414,10 +458,338 @@ export async function startVoiceServer() {
       }
     });
     
+    // Handle voice call mode
+    let callAgent = null;
+    let callActive = false;
+    let audioChunks = [];
+    let lastAudioTime = Date.now();
+    let processingTimer = null;
+    
+    // Function to process accumulated audio
+    const processAccumulatedAudio = async () => {
+      if (audioChunks.length === 0 || !callAgent) {
+        console.log('No audio to process or no agent');
+        return;
+      }
+      
+      console.log(`Processing ${audioChunks.length} audio chunks`);
+      
+      // Combine all audio chunks
+      const totalSize = audioChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+      console.log(`Total audio size: ${totalSize} bytes`);
+      
+      const combinedBuffer = new ArrayBuffer(totalSize);
+      const uint8Array = new Uint8Array(combinedBuffer);
+      let offset = 0;
+      
+      for (const chunk of audioChunks) {
+        uint8Array.set(new Uint8Array(chunk), offset);
+        offset += chunk.byteLength;
+      }
+      
+      // Clear the buffer
+      audioChunks = [];
+      
+      // Process the combined audio
+      try {
+        console.log('Sending to agent for processing...');
+        await callAgent.processAudioFile(combinedBuffer);
+      } catch (error) {
+        console.error('Error processing audio:', error);
+        socket.emit('call-error', { message: 'Audio processing failed' });
+      }
+    };
+    
+    socket.on('start-call', (settings) => {
+      console.log('Starting voice call for', socket.id);
+      callActive = true;
+      audioChunks = [];
+      lastAudioTime = Date.now();
+      
+      // Create or update agent for continuous conversation
+      if (!callAgent) {
+        const config = {
+          llmProvider: settings.llmProvider || 'openai',
+          llmModel: settings.llmModel || 'gpt-4o-mini',
+          ttsVoice: settings.voice || 'nova',
+          ttsSpeed: 1.0,
+          streamResponse: true,
+          temperature: 0.7,
+          systemPrompt: getCallSystemPrompt(settings.language)
+        };
+        
+        callAgent = new RealtimeStreamingAgent(config);
+        
+        // Setup event listeners for call
+        callAgent.on('transcript', (data) => {
+          socket.emit('call-response', { 
+            type: 'transcript',
+            text: typeof data === 'string' ? data : data.text
+          });
+        });
+        
+        callAgent.on('response', (data) => {
+          socket.emit('call-response', { 
+            type: 'response',
+            text: typeof data === 'string' ? data : data.text
+          });
+        });
+        
+        callAgent.on('audio', (audioData) => {
+          const base64 = Buffer.from(audioData).toString('base64');
+          socket.emit('call-response', { 
+            type: 'audio',
+            audio: 'data:audio/mpeg;base64,' + base64
+          });
+        });
+        
+        callAgent.on('error', (error) => {
+          socket.emit('call-error', { 
+            message: error.message || 'Call error'
+          });
+        });
+      }
+    });
+    
+    socket.on('call-audio', async (data) => {
+      if (!callActive || !callAgent) {
+        console.log('Call not active or no agent, ignoring audio');
+        return;
+      }
+      
+      try {
+        // Process continuous audio stream
+        const { audio, settings } = data;
+        
+        // Convert base64 to buffer
+        let audioBuffer;
+        if (typeof audio === 'string' && audio.startsWith('data:')) {
+          const base64Data = audio.split(',')[1];
+          const buffer = Buffer.from(base64Data, 'base64');
+          audioBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        } else {
+          audioBuffer = audio;
+        }
+        
+        console.log(`Received audio chunk: ${audioBuffer.byteLength} bytes`);
+        
+        // Add to buffer
+        audioChunks.push(audioBuffer);
+        lastAudioTime = Date.now();
+        
+        // Clear any existing timer
+        if (processingTimer) {
+          clearTimeout(processingTimer);
+        }
+        
+        // Set timer to process after 500ms of silence
+        processingTimer = setTimeout(() => {
+          console.log('Silence detected, processing audio...');
+          processAccumulatedAudio();
+        }, 500);
+        
+      } catch (error) {
+        console.error('Call audio error:', error);
+        socket.emit('call-error', { message: error.message });
+      }
+    });
+    
+    socket.on('interrupt-ai', () => {
+      if (callAgent) {
+        // Clear pending audio
+        audioChunks = [];
+        if (processingTimer) {
+          clearTimeout(processingTimer);
+        }
+        
+        // Stop current AI response
+        callAgent.interrupt();
+        socket.emit('call-response', { 
+          type: 'interrupted',
+          text: 'AI interrupted'
+        });
+      }
+    });
+    
+    socket.on('end-call', () => {
+      callActive = false;
+      audioChunks = [];
+      if (processingTimer) {
+        clearTimeout(processingTimer);
+      }
+      
+      if (callAgent) {
+        callAgent.clearHistory();
+        socket.emit('call-response', { 
+          type: 'ended',
+          text: 'Call ended'
+        });
+      }
+    });
+    
+    socket.on('update-settings', (settings) => {
+      if (callAgent) {
+        callAgent.updateConfig({
+          ttsSpeed: settings.speed || 1.0,
+          temperature: settings.temperature || 0.7,
+          systemPrompt: getCallSystemPrompt(settings.language)
+        });
+      }
+    });
+    
+    socket.on('interrupt-ai', () => {
+      console.log('AI interrupted by user', socket.id);
+      // Stop current TTS generation if in progress
+      // This would need implementation in the agent
+    });
+    
+    socket.on('end-call', () => {
+      console.log('Ending call for', socket.id);
+      callActive = false;
+      
+      if (callAgent) {
+        callAgent.clearHistory();
+        callAgent.removeAllListeners();
+        callAgent = null;
+      }
+    });
+    
+    socket.on('update-settings', (settings) => {
+      if (callAgent) {
+        callAgent.updateConfig({
+          llmProvider: settings.llmProvider,
+          llmModel: settings.llmModel,
+          ttsVoice: settings.voice,
+          systemPrompt: getCallSystemPrompt(settings.language)
+        });
+      }
+    });
+    
+    // Helper function for call prompts
+    function getCallSystemPrompt(language) {
+      if (language === 'ar') {
+        return 'أنت مساعد صوتي في مكالمة هاتفية. تحدث بشكل طبيعي ومختصر. استخدم عبارات قصيرة. رد بالعربية.';
+      } else if (language === 'multi') {
+        return 'You are a voice assistant in a phone call. Speak naturally and concisely. Use short phrases. Respond in the language spoken to you.';
+      } else {
+        return 'You are a friendly voice assistant in a phone call. Speak naturally like in a real conversation. Keep responses brief and conversational. Allow for back-and-forth dialogue.';
+      }
+    }
+    
+    // NEW: Voice Assistant handlers (simplified approach like ChatGPT)
+    let assistantAgent = null;
+    let assistantActive = false;
+
+    socket.on('voice-assistant-start', () => {
+      console.log('Voice assistant started for', socket.id);
+      assistantActive = true;
+
+      // Create agent if not exists
+      if (!assistantAgent) {
+        assistantAgent = new RealtimeStreamingAgent({
+          llmProvider: 'openai',
+          llmModel: 'gpt-4o-mini',
+          ttsVoice: 'nova',
+          ttsSpeed: 1.0,
+          streamResponse: false, // Don't stream for simplicity
+          systemPrompt: 'You are a helpful voice assistant like ChatGPT. Keep responses concise and conversational. Be friendly and natural.'
+        });
+
+        // Setup event listeners
+        assistantAgent.on('transcript', (data) => {
+          socket.emit('voice-assistant-response', {
+            type: 'transcript',
+            text: data.text || data
+          });
+        });
+
+        assistantAgent.on('response', (data) => {
+          socket.emit('voice-assistant-response', {
+            type: 'response',
+            text: data.text || data
+          });
+        });
+
+        assistantAgent.on('audio', (audioData) => {
+          const base64 = Buffer.from(audioData).toString('base64');
+          socket.emit('voice-assistant-response', {
+            type: 'audio',
+            audio: 'data:audio/mpeg;base64,' + base64
+          });
+        });
+
+        assistantAgent.on('error', (error) => {
+          console.error('Assistant error:', error);
+          socket.emit('voice-assistant-error', {
+            message: error.message || 'Processing error'
+          });
+        });
+      }
+    });
+
+    socket.on('voice-assistant-audio', async (data) => {
+      if (!assistantActive || !assistantAgent) {
+        console.log('Assistant not active');
+        return;
+      }
+
+      try {
+        console.log('Processing voice assistant audio...');
+        
+        // Notify client we're processing
+        socket.emit('voice-assistant-response', { type: 'thinking' });
+
+        // Convert base64 to buffer
+        const base64Data = data.audio.split(',')[1];
+        const audioBuffer = Buffer.from(base64Data, 'base64');
+        const arrayBuffer = audioBuffer.buffer.slice(
+          audioBuffer.byteOffset,
+          audioBuffer.byteOffset + audioBuffer.byteLength
+        );
+
+        console.log('Audio buffer size:', arrayBuffer.byteLength);
+
+        // Process the audio
+        await assistantAgent.processAudioFile(arrayBuffer);
+        
+        // Notify client we're ready for more
+        socket.emit('voice-assistant-response', { type: 'ready' });
+
+      } catch (error) {
+        console.error('Voice assistant error:', error);
+        socket.emit('voice-assistant-error', {
+          message: 'Failed to process audio'
+        });
+      }
+    });
+
+    socket.on('voice-assistant-stop', () => {
+      console.log('Voice assistant stopped for', socket.id);
+      assistantActive = false;
+      
+      if (assistantAgent) {
+        assistantAgent.interrupt();
+      }
+    });
+
     // Cleanup on disconnect
     socket.on('disconnect', () => {
       console.log('Voice client disconnected:', socket.id);
       activeAgents.delete(socket.id);
+      
+      // Clean up call agent
+      if (callAgent) {
+        callAgent.clearHistory();
+        callAgent.removeAllListeners();
+        callAgent = null;
+      }
+
+      // Clean up assistant agent
+      if (assistantAgent) {
+        assistantAgent.clearHistory();
+        assistantAgent.removeAllListeners();
+        assistantAgent = null;
+      }
       
       const streamAgent = streamingAgents.get(socket.id);
       if (streamAgent) {
